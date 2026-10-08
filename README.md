@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist`; `npm run preview` serves that build on the same port. No backend, API keys, or account setup are required.
+Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist`; `npm run preview` serves that build on the same port. Drafts are stored in Google Sheets and source PDFs in Google Drive through an Apps Script backend — see `docs/google-sheets-setup.md` for the one-time setup.
 
 ## Use
 
@@ -21,7 +21,7 @@ Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist
 
 Printed RCV remains the original baseline. A revision adds the change in rounded quantity × unit price and the changes in PM-reviewed tax/O&P dollars to that baseline. A removal credits full original RCV. Money uses decimal-string arithmetic with integer cents and half-away-from-zero rounding. Depreciation, ACV, and recap amounts do not become line items.
 
-Drafts and source PDFs autosave to IndexedDB in this browser and origin. There is no team sync. Clearing browser site data deletes the drafts. Keep downloaded copies of completed documents. Changing the site's origin uses a separate browser store. The active draft recovers after reload; storage failures are shown and prevent leaving an unsaved draft through the app.
+Drafts sync automatically to a shared Google Sheet, and uploaded source PDFs are stored in a Google Drive folder, so project managers see the same drafts across devices. Each save sends the draft to the Apps Script backend (the PDF stays in Drive), and a stale tab cannot overwrite a newer revision. Storage failures are shown and prevent leaving an unsaved draft through the app. Keep downloaded copies of completed documents.
 
 The parser supports positioned Final Draft tables, wrapped descriptions, repeated headers, and explicit RCV columns. PDFs vary; review extracted fields against the source before generation. Scanned PDFs and unsupported reports use manual entry. The app does not infer pricing-list rates, tax applicability, or O&P rules. A later change order must use the appropriate current estimate baseline; previously exported packets do not automatically update the baseline or previous authorized changes.
 

@@ -1,5 +1,104 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+async function installMockApi(page: Page) {
+  const drafts = new Map<string, any>();
+  const pdfs = new Map<
+    string,
+    { name: string; data: string; mimeType: string }
+  >();
+  await page.route(/__api__/, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const params = url.searchParams;
+    const method = request.method();
+    let action = params.get("action") ?? "";
+    let body: Record<string, unknown> = {};
+    if (method === "POST") {
+      try {
+        body = JSON.parse(request.postData() ?? "{}") as Record<
+          string,
+          unknown
+        >;
+      } catch {
+        body = {};
+      }
+      action = String(body.action ?? action);
+    }
+    const respond = (obj: unknown) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(obj),
+      });
+    if (action === "list") {
+      const rows = [...drafts.values()]
+        .map((d) => ({
+          id: d.id,
+          revision: d.revision,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+          step: d.step,
+          customer: d.job.customer,
+          jobNumber: d.job.jobNumber,
+          orderNumber: d.job.orderNumber,
+          changesCount: d.changes.length,
+          sourceName: d.source?.name ?? "",
+          hasSource: Boolean(d.source?.driveFileId),
+        }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      return respond({ ok: true, drafts: rows });
+    }
+    if (action === "open") {
+      const draft = drafts.get(params.get("id") ?? "");
+      return draft
+        ? respond({ ok: true, draft })
+        : respond({ ok: false, error: "Draft not found." });
+    }
+    if (action === "save") {
+      const draft = body.draft as any;
+      const previous = drafts.get(draft.id);
+      if (previous && previous.revision > draft.revision)
+        return respond({
+          ok: false,
+          error: "A newer version of this draft already exists.",
+        });
+      drafts.set(draft.id, draft);
+      return respond({ ok: true });
+    }
+    if (action === "delete") {
+      const draft = drafts.get(String(body.id));
+      if (draft?.source?.driveFileId) pdfs.delete(draft.source.driveFileId);
+      drafts.delete(String(body.id));
+      return respond({ ok: true });
+    }
+    if (action === "uploadPdf") {
+      const fileId = String(
+        body.replaceFileId || `pdf-${Math.random().toString(36).slice(2)}`,
+      );
+      pdfs.set(fileId, {
+        name: String(body.name),
+        data: String(body.data),
+        mimeType: String(body.mimeType || "application/pdf"),
+      });
+      return respond({ ok: true, fileId });
+    }
+    if (action === "pdf") {
+      const pdf = pdfs.get(params.get("id") ?? "");
+      return pdf
+        ? respond({
+            ok: true,
+            name: pdf.name,
+            mimeType: pdf.mimeType,
+            data: pdf.data,
+          })
+        : respond({ ok: false, error: "Source PDF not found." });
+    }
+    return respond({ ok: false, error: "Unknown action." });
+  });
+}
+test.beforeEach(async ({ page }) => {
+  await installMockApi(page);
+});
 test("upload, correct originals, calculate changes, reload, preview, and download", async ({
   page,
 }) => {
@@ -119,28 +218,22 @@ test("image-only PDFs provide a manual fallback", async ({ page }) => {
     page.getByRole("button", { name: "Add new work" }),
   ).toBeVisible();
 });
-test("device storage failures stay visible and keep the unsaved workspace open", async ({
+test("remote storage failures stay visible and keep the unsaved workspace open", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "indexedDB", {
-      configurable: true,
-      value: {
-        open() {
-          throw new DOMException(
-            "Device storage unavailable",
-            "QuotaExceededError",
-          );
-        },
-      },
-    });
-  });
+  await page.route(/__api__/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Sync unavailable" }),
+    }),
+  );
   await page.goto("/");
   await page
     .getByRole("button", { name: "New change order", exact: true })
     .click();
   await expect(page.locator(".storage-error")).toContainText(
-    "Device storage unavailable",
+    "Sync unavailable",
   );
   await page.getByRole("button", { name: "My drafts" }).click();
   await expect(page.getByRole("alert").last()).toContainText(

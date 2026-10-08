@@ -27,8 +27,18 @@ import {
   type EstimateItem,
   type ChangeItem,
   type JobDetails,
+  type SourceFile,
+  type DraftSummary,
 } from "./types";
-import { listDrafts, saveDraft, deleteDraft } from "./services/storage";
+import {
+  listDrafts,
+  saveDraft,
+  deleteDraft,
+  openDraft,
+  fetchSourcePdf,
+  uploadPdf,
+  blobToBase64,
+} from "./services/storage";
 import {
   baselineProblems,
   calculateChange,
@@ -127,9 +137,40 @@ function Brand() {
     </div>
   );
 }
+function SourcePanel({ source, page }: { source: SourceFile; page: number }) {
+  const [blob, setBlob] = useState<Blob | null>(source.blob);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (blob || !source.driveFileId) return;
+    let active = true;
+    void fetchSourcePdf(source.driveFileId)
+      .then((result) => {
+        if (active) setBlob(result.blob);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [blob, source.driveFileId]);
+  if (failed)
+    return (
+      <div className="empty">
+        <FileText size={24} />
+        <p>The source PDF could not be loaded from the cloud.</p>
+      </div>
+    );
+  if (!blob) return <div className="empty">Loading source PDF…</div>;
+  return (
+    <Suspense fallback={<div className="empty">Loading source PDF…</div>}>
+      <PdfViewer blob={blob} page={page} label="Source estimate" />
+    </Suspense>
+  );
+}
 export default function App() {
   const [draft, setDraft] = useState<ChangeOrderDraft | null>(null);
-  const [saved, setSaved] = useState<ChangeOrderDraft[]>([]);
+  const [saved, setSaved] = useState<DraftSummary[]>([]);
   const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">(
     "saved",
@@ -150,15 +191,22 @@ export default function App() {
   useEffect(() => {
     let active = true;
     void listDrafts()
-      .then((records) => {
+      .then(async (records) => {
         if (!active) return;
         setSaved(records);
         let selected: string | null = null;
         try {
           selected = localStorage.getItem("hays-active-draft");
         } catch {}
-        const recovered = records.find((d) => d.id === selected);
-        if (recovered) setDraft(recovered);
+        if (selected) {
+          try {
+            const recovered = await openDraft(selected);
+            if (active) setDraft(recovered);
+          } catch {
+            if (active)
+              setStorageError("Your last draft could not be reopened.");
+          }
+        }
       })
       .catch((e) => {
         if (active) {
@@ -349,8 +397,8 @@ export default function App() {
       setError("Upload a PDF estimate.");
       return;
     }
-    if (file.size > 40 * 1024 * 1024) {
-      setError("Choose a PDF smaller than 40 MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      setError("Choose a PDF smaller than 15 MB.");
       return;
     }
     if (
@@ -369,12 +417,35 @@ export default function App() {
         if (token === uploadToken.current) setBusy(message);
       });
       if (token !== uploadToken.current) return;
+      const warnings = [...result.warnings];
+      let driveFileId: string | null = null;
+      try {
+        if (token === uploadToken.current) setBusy("Saving your estimate…");
+        const base64 = await blobToBase64(file);
+        driveFileId = await uploadPdf(
+          file.name,
+          file.type || "application/pdf",
+          base64,
+          draftRef.current?.source?.driveFileId ?? null,
+        );
+      } catch {
+        if (token === uploadToken.current)
+          warnings.push(
+            "The source PDF could not be saved to the cloud; it will only be available on this device.",
+          );
+      }
+      if (token !== uploadToken.current) return;
       update((d) => ({
         ...d,
-        source: { name: file.name, blob: file, pages: result.pages },
+        source: {
+          name: file.name,
+          blob: file,
+          pages: result.pages,
+          driveFileId,
+        },
         estimate: result.items,
         changes: [],
-        extractionWarnings: result.warnings,
+        extractionWarnings: warnings,
         job: {
           ...d.job,
           ...Object.fromEntries(
@@ -472,7 +543,7 @@ export default function App() {
         <div className="topbar-right">
           <span className="local-label">
             <ShieldCheck size={15} />
-            Stored on this device
+            Synced to Google Sheets
           </span>
           {draft ? (
             <button
@@ -545,8 +616,8 @@ export default function App() {
                   Your drafts <span className="count">{saved.length}</span>
                 </h2>
                 <p>
-                  Pick up where you left off. Drafts save automatically in this
-                  browser.
+                  Pick up where you left off. Drafts sync automatically across
+                  your team.
                 </p>
               </div>
               {saved.length ? (
@@ -595,7 +666,7 @@ export default function App() {
                           onClick={() => {
                             if (
                               window.confirm(
-                                "Delete this draft and its saved estimate from this device?",
+                                "Delete this draft and its estimate for the whole team?",
                               )
                             )
                               void deleteDraft(d.id)
@@ -610,7 +681,7 @@ export default function App() {
                       <h3>{d.job.customer || "Untitled change order"}</h3>
                       <p>
                         {d.job.jobNumber || "Job number pending"} ·{" "}
-                        {d.changes.length} changed items
+                        {d.changesCount} changed items
                       </p>
                       <div className="draft-card-bottom">
                         <small>
@@ -623,10 +694,22 @@ export default function App() {
                         <button
                           className="text-button"
                           onClick={() => {
-                            setDraft(d);
-                            remember(d.id);
-                            setSearch("");
-                            setEditItem(null);
+                            if (busy) return;
+                            setBusy("Opening draft…");
+                            void openDraft(d.id)
+                              .then((full) => {
+                                setDraft(full);
+                                remember(full.id);
+                                setSearch("");
+                                setEditItem(null);
+                                setBusy("");
+                              })
+                              .catch((e) => {
+                                setBusy("");
+                                setStorageError(
+                                  e instanceof Error ? e.message : String(e),
+                                );
+                              });
                           }}
                         >
                           Open draft <ArrowRight size={15} />
@@ -640,7 +723,8 @@ export default function App() {
           <footer className="home-footer">
             <ShieldCheck size={15} />
             <span>
-              Your estimates and documents are processed in your browser.
+              Documents are processed in your browser and synced to your team's
+              Google Sheets.
             </span>
           </footer>
         </main>
@@ -1004,17 +1088,11 @@ export default function App() {
                     </section>
                     {draft.source ? (
                       <aside className="source-panel">
-                        <Suspense
-                          fallback={
-                            <div className="empty">Loading source PDF…</div>
-                          }
-                        >
-                          <PdfViewer
-                            blob={draft.source.blob}
-                            page={sourcePage}
-                            label="Source estimate"
-                          />
-                        </Suspense>
+                        <SourcePanel
+                          key={draft.source.driveFileId ?? draft.source.name}
+                          source={draft.source}
+                          page={sourcePage}
+                        />
                       </aside>
                     ) : null}
                   </div>
