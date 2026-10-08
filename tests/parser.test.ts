@@ -37,6 +37,42 @@ test("missing optional columns stay blank and need PM review", () => {
     result.items[0].warnings.some((w) => w.includes("O&P is not shown")),
   );
 });
+test("Xactimate column labels: LINE ITEM, QTY, UNIT COST, O & P", () => {
+  const tokens = [
+    token("Claim Number: 22-123456", 48, 720),
+    token("Type of Loss: Water", 48, 700),
+    token("Kitchen", 48, 622),
+    token("LINE ITEM", 48, 600),
+    token("QTY", 300, 600),
+    token("UNIT", 365, 600),
+    token("COST", 390, 600),
+    token("TAX", 411, 600),
+    token("O & P", 445, 600),
+    token("RCV", 479, 600),
+    token("DEPREC.", 526, 600),
+    token("ACV", 571, 600),
+    token("1.", 48, 577),
+    token("Replace kitchen cabinets", 64, 577),
+    token("1.00 EA", 300, 577),
+    token("450.00", 365, 577),
+    token("9.00", 411, 577),
+    token("45.00", 445, 577),
+    token("504.00", 479, 577),
+    token("100.00", 526, 577),
+    token("404.00", 571, 577),
+  ];
+  const result = parseEstimate([{ page: 1, tokens }]);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].room, "Kitchen");
+  assert.equal(result.items[0].description, "Replace kitchen cabinets");
+  assert.equal(result.items[0].quantity, "1.00");
+  assert.equal(result.items[0].unit, "EA");
+  assert.equal(result.items[0].rate, "450.00");
+  assert.equal(result.items[0].tax, "9.00");
+  assert.equal(result.items[0].op, "45.00");
+  assert.equal(result.items[0].rcv, "504.00");
+  assert.equal(result.job.claim, "22-123456");
+});
 test("numeric values on a second baseline complete a row without inventing values", () => {
   const result = parseEstimate([
     {

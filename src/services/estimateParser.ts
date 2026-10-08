@@ -32,13 +32,13 @@ interface Header {
 const headings: [Column, RegExp][] = [
   ["quantity", /^(?:QUANTITY|QTY)$/i],
   ["unit", /^UNIT$/i],
-  ["rate", /^(?:UNIT\s*PRICE|PRICE|RATE)$/i],
+  ["rate", /^(?:UNIT\s*PRICE|UNIT\s*COST|PRICE|RATE|COST)$/i],
   ["tax", /^(?:TAX|SALES\s*TAX)$/i],
   ["op", /^(?:O\s*&\s*P|OVERHEAD.*PROFIT)$/i],
   ["rcv", /^(?:RCV|REPLACEMENT\s*COST|TOTAL)$/i],
   ["depreciation", /^(?:DEPREC\.?|DEPRECIATION)$/i],
   ["acv", /^ACV$/i],
-  ["description", /^(?:DESCRIPTION|ITEM)$/i],
+  ["description", /^(?:DESCRIPTION|LINE\s*ITEM|ITEM)$/i],
 ];
 const number = (text: string) =>
   text.replace(/[$,\s%]/g, "").replace(/^\((.*)\)$/, "-$1");
@@ -60,7 +60,7 @@ function detectHeader(line: TextToken[]): Header | null {
     let label = token.text.trim();
     if (
       /^UNIT$/i.test(label) &&
-      /^PRICE$/i.test(line[i + 1]?.text.trim() ?? "") &&
+      /^(?:PRICE|COST)$/i.test(line[i + 1]?.text.trim() ?? "") &&
       line[i + 1].x - token.x < 50
     ) {
       label = "UNIT PRICE";
@@ -197,10 +197,12 @@ export function parseEstimate(pages: PositionedPage[]): ParseResult {
       }
       const isLeftOnly = line.every((t) => t.x + t.width < qx - 15);
       const isFurniture =
-        /^(?:Page\b|Estimate\b|Date:|Price List:|Final Draft\b|Hays\b)/i.test(
+        /^(?:Page\b|Estimate\b|Date(?:\s+Prepared)?:|Price\s*List:|Final\s*Draft\b|Hays\b|Prepared\s+For:|Prepared\s+By:|Estimator:|Type\s+of\s+Loss:|Date\s+of\s+Loss:|Policy(?:\s+Number)?:|Deductible:|Coverage:|Reference(?:\s+Number)?:|Loss\s+Address:|Received:|Reported:|Phone:|Email:|Attention:)/i.test(
           text,
         ) ||
-        /^CONTINUED(?:\s+ON\s+PAGE\s+\d+)?$/i.test(text) ||
+        /^CONTINUED(?:\s+ON\s+(?:NEXT\s+)?PAGE(?:\s+\d+)?)?$/i.test(
+          text,
+        ) ||
         first.y < 35 ||
         first.y > 750;
       if (isFurniture) continue;
