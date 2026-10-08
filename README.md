@@ -1,0 +1,38 @@
+# Hays + Sons Change Orders
+
+A separate, browser-based app for project managers to create itemized change orders from Xactimate Final Draft PDFs. The reference application remains in `C:\Users\russe\haysdocuments-2`.
+
+## Run
+
+```powershell
+cd C:\Users\russe\hays-change-orders
+npm install
+npm run dev
+```
+
+Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist`; `npm run preview` serves that build on the same port. No backend, API keys, or account setup are required.
+
+## Use
+
+1. Create a change order and upload a selectable-text Xactimate Final Draft PDF (up to 40 MB). Review extracted rooms and original item values alongside the source. Missing values stay blank; enter applicable tax/O&P dollars, including zero where appropriate. Mark the original items reviewed.
+2. Revise or credit original items, or add new work. Enter revised quantity/rate, tax and overhead/profit dollar amounts, and a reason. Confirm pricing on each item.
+3. Confirm the customer, job, branch, insurance, signed original contract amount, previous authorized changes, and working days. Edit the generated scope summary if needed.
+4. Preview/print/download the packet, form, or Attachment A. Signature spaces are included for owner and contractor.
+
+Printed RCV remains the original baseline. A revision adds the change in rounded quantity × unit price and the changes in PM-reviewed tax/O&P dollars to that baseline. A removal credits full original RCV. Money uses decimal-string arithmetic with integer cents and half-away-from-zero rounding. Depreciation, ACV, and recap amounts do not become line items.
+
+Drafts and source PDFs autosave to IndexedDB in this browser and origin. There is no team sync. Clearing browser site data deletes the drafts. Keep downloaded copies of completed documents. Changing the site's origin uses a separate browser store. The active draft recovers after reload; storage failures are shown and prevent leaving an unsaved draft through the app.
+
+The parser supports positioned Final Draft tables, wrapped descriptions, repeated headers, and explicit RCV columns. PDFs vary; review extracted fields against the source before generation. Scanned PDFs and unsupported reports use manual entry. The app does not infer pricing-list rates, tax applicability, or O&P rules. A later change order must use the appropriate current estimate baseline; previously exported packets do not automatically update the baseline or previous authorized changes.
+
+## Verification
+
+```powershell
+npm run typecheck
+npm test
+npm run fixtures
+npm run test:browser
+npm run build
+```
+
+The fixtures are synthetic Xactimate-style reports, not customer documents. `tmp/` holds generated short/long packets and browser screenshots for QA. Browser tests require Playwright Chromium (`npx playwright install chromium` if absent). A real PM estimate should be trialed before operational use because no customer sample was supplied for this implementation.
