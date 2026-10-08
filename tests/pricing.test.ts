@@ -6,6 +6,8 @@ import {
   calculateChange,
   totals,
   validationErrors,
+  sumDecimals,
+  baselineProblems,
 } from "../src/services/pricing";
 import { createChange } from "../src/types";
 import { validDraft } from "./helpers";
@@ -80,4 +82,48 @@ test("invalid calendar dates are rejected rather than rolling into the next mont
   assert.ok(validationErrors(d).includes("Enter a valid change-order date."));
   d.job.date = "2026-02-28";
   assert.deepEqual(validationErrors(d), []);
+});
+
+test("split unit rates retain decimal precision before extending the quantity", () => {
+  assert.equal(sumDecimals(["0.005", "0.005", "-0.001"]), "0.009");
+  assert.equal(subtotal("100", sumDecimals(["0.005", "0.005"])), 100);
+  assert.equal(sumDecimals(["0.00", "-692.08"]), "-692.08");
+});
+
+test("existing estimate credits can be confirmed, revised, or removed", () => {
+  const d = validDraft();
+  Object.assign(d.changes[0].original!, {
+    quantity: "1",
+    rate: "-692.08",
+    tax: "0",
+    op: "0",
+    rcv: "-692.08",
+  });
+  d.changes[0] = createChange(d.changes[0].original, "revise");
+  Object.assign(d.changes[0], {
+    reason: "Adjust labor credit",
+    pricingConfirmed: true,
+  });
+  assert.deepEqual(baselineProblems(d.changes[0].original!), []);
+  assert.deepEqual(validationErrors(d), []);
+  assert.deepEqual(calculateChange(d.changes[0]), {
+    original: -69208,
+    revised: -69208,
+    delta: 0,
+  });
+  d.changes[0].quantity = "2";
+  assert.deepEqual(calculateChange(d.changes[0]), {
+    original: -69208,
+    revised: -138416,
+    delta: -69208,
+  });
+  d.changes[0].action = "remove";
+  assert.deepEqual(calculateChange(d.changes[0]), {
+    original: -69208,
+    revised: 0,
+    delta: 69208,
+  });
+  d.changes[0].original!.rcv = "";
+  d.changes[0].action = "revise";
+  assert.ok(validationErrors(d).some((e) => e.includes("original estimate")));
 });

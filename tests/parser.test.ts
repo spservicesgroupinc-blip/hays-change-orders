@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseEstimate } from "../src/services/estimateParser";
 import { samplePages, header, row, token } from "./helpers";
+import { splitHeader, splitPages, splitRow } from "./splitPricingFixture";
+import { cents } from "../src/services/pricing";
 test("reconstructs rooms, wrapped rows and pages; excludes recaps and ACV", () => {
   const result = parseEstimate(samplePages());
   assert.equal(result.items.length, 3);
@@ -120,4 +122,67 @@ test("scans and unsupported layouts yield manual-entry guidance", () => {
     ]).warnings[0],
     /manually/,
   );
+});
+
+test("right-aligned split prices, resets, wrapped descriptions, credits, and sketch rooms", () => {
+  const result = parseEstimate(splitPages());
+  assert.equal(result.items.length, 6);
+  const [wall, material, joist, credit, roof, reset] = result.items;
+  assert.equal(wall.rate, "2.73");
+  assert.equal(wall.rcv, "429.13");
+  assert.deepEqual(wall.priceComponents, {
+    reset: "",
+    remove: "0.27",
+    replace: "2.46",
+  });
+  assert.equal(wall.description, "R&R Stud wall");
+  assert.match(wall.rawText, /Temporary support note/);
+  assert.equal(material.description, "Fir / Larch (material only)");
+  assert.equal(joist.description, "R&R Joist - floor or ceiling - w/blocking");
+  assert.equal(joist.room, "Roof Framing");
+  assert.equal(credit.rate, "-692.08");
+  assert.equal(credit.rcv, "-692.08");
+  assert.equal(roof.room, "House Roof");
+  assert.equal(reset.room, "Breeze way");
+  assert.equal(reset.rate, "46.63");
+  assert.deepEqual(result.warnings, []);
+  assert.ok(
+    result.items.every((item) => !item.reviewed && item.warnings.length === 0),
+  );
+  assert.equal(
+    result.items.reduce((sum, item) => sum + cents(item.rcv), 0),
+    168046,
+  );
+  assert.equal(result.job.originalContract, "1680.46");
+  assert.equal(result.job.customer, "Sample Customer");
+  assert.equal(result.job.claim, "TEST-001");
+  assert.equal(result.job.address, "123 Sample Street, Fort Wayne, IN 46808");
+});
+
+test("missing or ambiguous split prices remain blank for review", () => {
+  for (const replace of ["", "TBD"]) {
+    const result = parseEstimate([
+      {
+        page: 1,
+        tokens: [
+          ...splitHeader(),
+          ...splitRow(
+            "1",
+            "Repair",
+            575,
+            "1.00 EA",
+            "",
+            "",
+            replace,
+            "0.00",
+            "0.00",
+            "10.00",
+          ),
+        ],
+      },
+    ]);
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].rate, "");
+    assert.ok(result.items[0].warnings.some((w) => w.includes("RATE")));
+  }
 });

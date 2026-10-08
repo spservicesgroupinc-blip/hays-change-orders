@@ -6,6 +6,9 @@ export interface EstimateItem {
   quantity: string;
   unit: string;
   rate: string;
+  // Printed per-unit components in split-price Xactimate reports. The editable
+  // rate is their sum; these retain the source values for PM verification.
+  priceComponents?: Partial<Record<"reset" | "remove" | "replace", string>>;
   tax: string;
   op: string;
   rcv: string;

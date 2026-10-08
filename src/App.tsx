@@ -500,7 +500,7 @@ export default function App() {
               {row.quantity || "—"}
               <small>{row.unit}</small>
             </td>
-            <td>{validDecimal(row.rcv) ? money(cents(row.rcv)) : "—"}</td>
+            <td>{validDecimal(row.rcv, true) ? money(cents(row.rcv)) : "—"}</td>
             <td>
               <button
                 className={`icon-button ${row.reviewed ? "credit" : ""}`}
@@ -1015,6 +1015,16 @@ export default function App() {
                                     />
                                   ))}
                                 </div>
+                                {row.priceComponents ? (
+                                  <p className="credit">
+                                    The extracted unit price combines reset (
+                                    {row.priceComponents.reset || "0"}), removal
+                                    ({row.priceComponents.remove || "0"}), and
+                                    replacement (
+                                    {row.priceComponents.replace || "0"}) prices
+                                    from the estimate.
+                                  </p>
+                                ) : null}
                                 {row.warnings.length ? (
                                   <div className="inline-warning">
                                     {row.warnings.join(" ")}

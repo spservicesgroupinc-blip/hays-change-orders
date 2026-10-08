@@ -1,12 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+// Cover both the local endpoint and the configured Apps Script endpoint so
+// production-build browser checks never write test drafts to the team sheet.
+const apiRoute =
+  /\/__api__(?:\?|$)|https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?|$)/;
 async function installMockApi(page: Page) {
   const drafts = new Map<string, any>();
   const pdfs = new Map<
     string,
     { name: string; data: string; mimeType: string }
   >();
-  await page.route(/__api__/, async (route) => {
+  await page.route(apiRoute, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const params = url.searchParams;
@@ -98,6 +102,95 @@ async function installMockApi(page: Page) {
 }
 test.beforeEach(async ({ page }) => {
   await installMockApi(page);
+});
+
+test("real split-price Xactimate estimate uploads, preserves credits, and generates a packet", async ({
+  page,
+}) => {
+  // Opt-in so the customer's estimate is kept outside the repository.
+  test.skip(
+    !process.env.HAYS_ESTIMATE_SAMPLE,
+    "Set HAYS_ESTIMATE_SAMPLE to the supplied regression PDF.",
+  );
+  test.setTimeout(60000);
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "New change order", exact: true })
+    .click();
+  await page
+    .getByLabel("Upload estimate PDF")
+    .setInputFiles(process.env.HAYS_ESTIMATE_SAMPLE!);
+  await expect(page.getByText("Your estimate is attached.")).toBeVisible();
+  await expect(page.locator(".baseline-row")).toHaveCount(296);
+  await expect(
+    page.getByText(/No supported Xactimate line-item table/),
+  ).toHaveCount(0);
+  await page.getByLabel("Search estimate").fill("345");
+  await expect(page.locator(".estimate-table tbody tr")).toHaveCount(1);
+  await expect(page.locator(".estimate-table tbody tr")).toContainText(
+    "-$692.08",
+  );
+  await page.getByLabel("Review original line 345").click();
+  await expect(page.getByLabel("Unit price ($)", { exact: true })).toHaveValue(
+    "-692.08",
+  );
+  await expect(page.getByLabel("Original RCV ($)")).toHaveValue("-692.08");
+  await page.getByLabel("Search estimate").fill("");
+  await page
+    .getByRole("button", { name: "Confirm all complete original items" })
+    .click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByLabel("Search items to change").fill("R&R Stud wall");
+  await page
+    .getByRole("button", { name: "Revise", exact: true })
+    .first()
+    .click();
+  await expect(page.getByLabel("Revised quantity")).toHaveValue("128.00");
+  await expect(page.getByLabel("Unit price ($)", { exact: true })).toHaveValue(
+    "2.73",
+  );
+  await page.getByLabel("Revised quantity").fill("138.00");
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Additional framing area identified");
+  await page.getByLabel("I confirm the revised pricing").check();
+  await expect(page.locator(".rail-total")).toContainText("+$27.30");
+  await page.getByLabel("Search items to change").fill("345");
+  await page.getByRole("button", { name: "Revise", exact: true }).click();
+  const credit = page.locator(".change-card").last();
+  await credit.getByLabel("Unit price ($)", { exact: true }).fill("-700.00");
+  await credit
+    .getByLabel("Reason for this change")
+    .fill("Revise the original labor credit");
+  await credit.getByLabel("I confirm the revised pricing").check();
+  await expect(page.locator(".rail-total")).toContainText("+$19.38");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByLabel("Original contract ($)")).toHaveValue(
+    "167045.81",
+  );
+  await page.getByLabel("Job number", { exact: true }).fill("XACTIMATE-QA");
+  await page.getByLabel("Project manager", { exact: true }).fill("QA PM");
+  await page.getByLabel("Branch contact / contractor").fill("QA Contractor");
+  await page.getByLabel("Insurance carrier").fill("QA Carrier");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Download packet" }),
+  ).toBeVisible();
+  await expect(page.locator(".summary-grid")).toContainText("$167,065.19");
+  await expect(page.locator(".pdf-canvas")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download packet" }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe(
+    "XACTIMATE-QA_CO-01_Change_Order_Packet.pdf",
+  );
+  await download.saveAs("tmp/pdfs/real-estimate-qa-packet.pdf");
+  expect(runtimeErrors).toEqual([]);
 });
 test("upload, correct originals, calculate changes, reload, preview, and download", async ({
   page,
@@ -221,7 +314,7 @@ test("image-only PDFs provide a manual fallback", async ({ page }) => {
 test("remote storage failures stay visible and keep the unsaved workspace open", async ({
   page,
 }) => {
-  await page.route(/__api__/, (route) =>
+  await page.route(apiRoute, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

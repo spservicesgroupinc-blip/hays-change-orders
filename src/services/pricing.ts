@@ -27,6 +27,24 @@ export function subtotal(quantity: string, rate: string): number {
     r = fraction(rate);
   return safe(round(q.n * r.n * 100n, q.scale * r.scale));
 }
+// Unit rates may have more than two decimal places. Combine them before
+// rounding the extended quantity, rather than rounding each rate to cents.
+export function sumDecimals(values: string[]): string {
+  const fractions = values.map(fraction);
+  const scale = fractions.reduce(
+    (max, f) => (f.scale > max ? f.scale : max),
+    1n,
+  );
+  const total = fractions.reduce((sum, f) => sum + f.n * (scale / f.scale), 0n);
+  const digits = scale.toString().length - 1;
+  const magnitude = (total < 0n ? -total : total)
+    .toString()
+    .padStart(digits + 1, "0");
+  const result = digits
+    ? `${magnitude.slice(0, -digits)}.${magnitude.slice(-digits)}`
+    : magnitude;
+  return `${total < 0n ? "-" : ""}${result}`;
+}
 export function validDecimal(value: string, allowNegative = false): boolean {
   try {
     const f = fraction(value);
@@ -47,9 +65,9 @@ export function baselineProblems(item: EstimateItem): string[] {
   if (!item.description.trim()) problems.push("Description is required.");
   if (!item.unit.trim()) problems.push("Unit is required.");
   for (const key of ["quantity", "rate", "tax", "op", "rcv"] as const)
-    if (!validDecimal(item[key]))
+    if (!validDecimal(item[key], key !== "quantity"))
       problems.push(
-        `${key === "op" ? "O&P" : key.toUpperCase()} needs a valid nonnegative number.`,
+        `${key === "op" ? "O&P" : key.toUpperCase()} needs a valid ${key === "quantity" ? "nonnegative " : ""}number.`,
       );
   return problems;
 }
@@ -71,7 +89,10 @@ export function calculateChange(item: ChangeItem): {
       cents(item.op) -
       cents(item.original.op)
     : revisedBase + cents(item.tax) + cents(item.op);
-  if (revised < 0) throw new Error("Revised item total cannot be negative.");
+  if (revised < 0 && original >= 0)
+    throw new Error(
+      "Revised item total cannot be negative unless the original item is a credit.",
+    );
   return { original, revised, delta: revised - original };
 }
 export function totals(draft: ChangeOrderDraft) {
@@ -163,7 +184,16 @@ export function validationErrors(draft: ChangeOrderDraft): string[] {
       row.action !== "remove" &&
       (!row.unit.trim() ||
         ["quantity", "rate", "tax", "op"].some(
-          (key) => !validDecimal(row[key as "quantity"]),
+          (key) =>
+            !validDecimal(
+              row[key as "quantity"],
+              key !== "quantity" &&
+                Boolean(
+                  row.original &&
+                    validDecimal(row.original.rcv, true) &&
+                    cents(row.original.rcv) < 0,
+                ),
+            ),
         ))
     )
       errors.push(
