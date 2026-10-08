@@ -1,9 +1,11 @@
 /**
  * Hays + Sons Change Orders — Google Sheets + Drive storage backend.
  *
- * Container-bound script: paste this file into the Apps Script editor attached
- * to the "Drafts" spreadsheet (Extensions → Apps Script), set the API_KEY
- * script property, then deploy as a web app (execute as me, access: Anyone).
+ * Container-bound script: paste this whole file into the Apps Script editor
+ * attached to a Google Sheet (Extensions → Apps Script), then run setup()
+ * once (or use the "Change Orders" menu). setup() creates the Drafts sheet,
+ * the Drive folder, and an API key, and prints the values to paste into
+ * .env.local. Finally deploy as a web app (execute as me, access: Anyone).
  *
  * Endpoints (all require the shared API key):
  *   GET  ?action=list             → { ok, drafts: [{summary…}] }
@@ -97,6 +99,58 @@ function folder_() {
   return folder;
 }
 
+function generateKey_() {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let key = "";
+  for (let i = 0; i < 48; i += 1)
+    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  return key;
+}
+
+function setup() {
+  const sheet = sheet_();
+  const folder = folder_();
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty(API_KEY_PROP);
+  if (!key) {
+    key = generateKey_();
+    props.setProperty(API_KEY_PROP, key);
+  }
+  const summary = [
+    "Setup complete.",
+    "Drafts sheet: " + sheet.getName(),
+    "Drive folder: " + folder.getName(),
+    "",
+    "Paste this API key into .env.local as VITE_APPS_SCRIPT_KEY:",
+    key,
+    "",
+    "Then: Deploy → New deployment → Web app",
+    "  Execute as: Me",
+    "  Who has access: Anyone",
+    "After deploying, paste the Web app URL into .env.local as",
+    "VITE_APPS_SCRIPT_URL and restart npm run dev.",
+  ].join("\n");
+  Logger.log(summary);
+  try {
+    SpreadsheetApp.getUi().alert(
+      "Change Orders setup",
+      summary,
+      SpreadsheetApp.getUi().ButtonSet.OK,
+    );
+  } catch (e) {
+    // Headless context; Logger already has the summary.
+  }
+  return summary;
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Change Orders")
+    .addItem("Run one-time setup", "setup")
+    .addToUi();
+}
+
 function findRow_(id) {
   const sheet = sheet_();
   const last = sheet.getLastRow();
@@ -147,7 +201,7 @@ function draftToRow_(draft) {
 }
 
 function doGet(e) {
-  const p = e.parameter || {};
+  const p = (e && e.parameter) || {};
   if (!verifiedKey_(p.key)) return fail_("Unauthorized.");
   if (p.action === "list") return list_();
   if (p.action === "open") return open_(p.id);
@@ -156,6 +210,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  if (!e || !e.postData) return fail_("Invalid request.");
   let body;
   try {
     body = JSON.parse(e.postData.contents);

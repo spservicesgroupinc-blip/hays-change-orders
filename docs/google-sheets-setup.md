@@ -24,31 +24,27 @@ The `appsscript.json` manifest (`apps-script/appsscript.json`) is provided for
 reference. In the Apps Script editor you can confirm the runtime by going to
 **Project Settings** and checking that it runs under V8. The web-app settings
 (execute as the deploying user, access: Anyone) are set during deployment in
-step 5.
+step 4.
 
-## 3. Set the shared API key
+## 3. Run the one-time setup
 
-1. In the Apps Script editor, open **Project Settings → Script properties**.
-2. Add a property named `API_KEY` with a long random value. Generate one with:
+1. In the Apps Script editor, select the `setup` function from the toolbar
+   dropdown and click **Run** — or reload the spreadsheet and use the
+   **Change Orders → Run one-time setup** menu.
+2. Accept the OAuth consent for **Google Sheets** and **Google Drive** when
+   prompted.
+3. `setup()` creates the **Drafts** sheet, creates the **hays-change-orders**
+   Drive folder, and generates an API key. It shows a dialog with:
+   - the **API key** → save this for step 5 (`VITE_APPS_SCRIPT_KEY`);
+   - the deploy instructions.
 
-   ```powershell
-   -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 40 | ForEach-Object {[char]$_})
-   ```
-
-3. Save the property. The same value goes into the frontend `.env.local`
-   (`VITE_APPS_SCRIPT_KEY`).
+Re-running `setup()` is safe: it reuses the existing sheet, folder, and key.
 
 > The key is an access guard, not encryption. Anyone who can read the built
 > JavaScript can extract it. For real authentication, replace the key check
 > with Google Sign-In later.
 
-## 4. Authorize the scopes
-
-Run any function once (e.g. run `list_` from the editor, or just deploy) and
-accept the OAuth consent for **Google Sheets** and **Google Drive**. The
-deploying account must be able to write to the sheet and its Drive.
-
-## 5. Deploy as a web app
+## 4. Deploy as a web app
 
 1. In the Apps Script editor, click **Deploy → New deployment**.
 2. Choose type **Web app**.
@@ -62,7 +58,7 @@ Whenever you edit `Code.gs` later, create a **new deployment** (or edit the
 existing one and point it to the new version) for production users to see the
 change.
 
-## 6. Point the app at it
+## 5. Point the app at it
 
 Create `c:\Users\russe\hays-change-orders\.env.local` with:
 
@@ -73,7 +69,7 @@ VITE_APPS_SCRIPT_KEY=<the same API_KEY value from step 3>
 
 Then restart `npm run dev` (Vite reads `.env.local` at startup).
 
-## 7. Verify
+## 6. Verify
 
 1. Open <http://127.0.0.1:3010>, create a draft, and upload a small PDF.
 2. In the spreadsheet, a **Drafts** sheet should appear with one row.
