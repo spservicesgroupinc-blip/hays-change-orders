@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "playwright test",
-    "fixtures": "tsx scripts/fixtures.ts"
+    "fixtures": "tsx scripts/fixtures.ts",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "lucide-react": "0.546.0",
@@ -28,6 +29,7 @@
     "prettier": "^3.6.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vite": "8.3.1"
+    "vite": "8.3.1",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }

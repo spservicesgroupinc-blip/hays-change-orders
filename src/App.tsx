@@ -44,6 +44,7 @@ import PMRequestForm from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import LegacyWorkspace from "./LegacyWorkspace";
 import PdfViewer from "./components/PdfViewer";
+import InstallApp from "./components/InstallApp";
 import "./app.css";
 
 const STATUS_LABELS: Record<RequestStatus, string> = {
@@ -606,12 +607,15 @@ export default function App() {
 
   if (view.kind === "legacy")
     return (
-      <LegacyWorkspace
-        startNew={view.startNew}
-        converting={Boolean(converting)}
-        onExit={() => void goHome()}
-        onConvert={convert}
-      />
+      <>
+        <InstallApp />
+        <LegacyWorkspace
+          startNew={view.startNew}
+          converting={Boolean(converting)}
+          onExit={() => void goHome()}
+          onConvert={convert}
+        />
+      </>
     );
 
   return (
@@ -639,6 +643,7 @@ export default function App() {
           )}
         </div>
       </header>
+      <InstallApp />
       {listError && view.kind === "home" ? (
         <div className="storage-error" role="alert">
           <X size={18} />
