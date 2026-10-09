@@ -30,6 +30,81 @@ export interface ChangeItem {
   op: string;
   reason: string;
   pricingConfirmed: boolean;
+  requestChangeId?: string;
+  customerPrice?: { total: string; tax: string | null; op: string | null };
+  manualCredit?: string;
+}
+export type RequestStatus = "draft" | "submitted" | "in_review" | "needs_information" | "ready";
+export type AttachmentKind = "estimate" | "quote" | "photo";
+export interface RequestedChange {
+  id: string;
+  room: string;
+  action: "add" | "revise" | "remove";
+  description: string;
+  reason: string;
+  measurements: string;
+  materials: string;
+  scheduleImpact: string;
+  estimateItemIds: string[];
+}
+export interface SubcontractorQuote {
+  id: string;
+  subcontractor: string;
+  trade: string;
+  cost: string;
+  notes: string;
+  changeIds: string[];
+  attachmentIds: string[];
+}
+export interface RequestAttachment {
+  id: string;
+  kind: AttachmentKind;
+  name: string;
+  mimeType: string;
+  size: number;
+  driveFileId: string;
+}
+export interface PendingUpload {
+  id: string;
+  name: string;
+  state: "uploading" | "failed";
+  error?: string;
+}
+export interface ChangeRequest {
+  schemaVersion: 2;
+  id: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  status: RequestStatus;
+  estimatorName: string;
+  submittedAt: string | null;
+  informationQuestion: string;
+  job: JobDetails;
+  requestedChanges: RequestedChange[];
+  quotes: SubcontractorQuote[];
+  attachments: RequestAttachment[];
+  estimate: EstimateItem[];
+  estimateAttachmentId: string | null;
+  extractionWarnings: string[];
+  pricedItems: ChangeItem[];
+  exclusions: Record<string, string>;
+  customerScope: string;
+  customerScopeEdited: boolean;
+  customerScopeConfirmed: boolean;
+  contractConfirmed: boolean;
+  legacyDraftId?: string;
+}
+export interface RequestSummary {
+  id: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  status: RequestStatus;
+  estimatorName: string;
+  changesCount: number;
+  attachmentsCount: number;
+  job: Pick<JobDetails, "customer" | "jobNumber" | "projectManager" | "orderNumber" | "address">;
 }
 export interface JobDetails {
   customer: string;

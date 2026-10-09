@@ -340,6 +340,7 @@ export async function generateDocuments(
     ab = await attachment.embedFont(StandardFonts.HelveticaBold);
   let ap!: PDFPage;
   let ay = 0;
+  let activeItem = "";
   const newPage = () => {
     ap = attachment.addPage([612, 792]);
     header(ap, draft, af, ab);
@@ -354,6 +355,10 @@ export async function generateDocuments(
       MUTED,
     );
     ay = 633;
+    if (activeItem) {
+      text(ap, `${activeItem} - continued`, 48, ay, ab, 8, MUTED);
+      ay -= 18;
+    }
   };
   const ensure = (height: number) => {
     if (ay - height < 60) newPage();
@@ -409,7 +414,9 @@ export async function generateDocuments(
     ay -= 28;
   };
   draft.changes.forEach((row, index) => {
+    activeItem = "";
     ensure(125);
+    activeItem = `Customer item ${String(index + 1).padStart(2, "0")}`;
     ap.drawLine({
       start: { x: 44, y: ay + 13 },
       end: { x: 568, y: ay + 13 },
@@ -417,7 +424,7 @@ export async function generateDocuments(
       thickness: 1,
     });
     flowing(
-      `${String(index + 1).padStart(2, "0")}  ${row.action === "add" ? "ADD NEW WORK" : row.action === "remove" ? "REMOVE / CREDIT" : "REVISE"} | ${row.room || "Unassigned room"}`,
+      `${String(index + 1).padStart(2, "0")}  ${row.manualCredit !== undefined ? "CUSTOMER CREDIT" : row.action === "add" ? "ADD NEW WORK" : row.action === "remove" ? "REMOVE / CREDIT" : "REVISE"} | ${row.room || "Unassigned room"}`,
       10,
       ab,
     );
@@ -430,6 +437,13 @@ export async function generateDocuments(
       );
     flowing(row.description, 10, ab);
     flowing(`Reason: ${row.reason}`);
+    if (row.customerPrice || row.manualCredit !== undefined)
+      flowing(
+        "Customer price includes tax and O&P. Any displayed breakdown is included in the total.",
+        8,
+        af,
+        MUTED,
+      );
     ay -= 8;
     pricingHeader();
     const amounts = calculateChange(row);
@@ -443,11 +457,39 @@ export async function generateDocuments(
         money(amounts.original),
       ],
       [
-        "Revised",
-        row.action === "remove" ? "0" : `${row.quantity} ${row.unit}`,
-        row.action === "remove" ? "-" : `$${row.rate}`,
-        row.action === "remove" ? money(0) : money(cents(row.tax)),
-        row.action === "remove" ? money(0) : money(cents(row.op)),
+        row.manualCredit !== undefined ? "Credit" : "Revised",
+        row.manualCredit !== undefined
+          ? "-"
+          : row.action === "remove"
+            ? "0"
+            : row.customerPrice && (!row.quantity.trim() || !row.unit.trim())
+              ? "Lump sum"
+              : `${row.quantity} ${row.unit}`,
+        row.manualCredit !== undefined
+          ? "-"
+          : row.customerPrice
+            ? "All-in"
+            : row.action === "remove"
+              ? "-"
+              : `$${row.rate}`,
+        row.manualCredit !== undefined
+          ? "Included"
+          : row.customerPrice
+            ? row.customerPrice.tax === null
+              ? "Included"
+              : money(cents(row.customerPrice.tax))
+            : row.action === "remove"
+              ? money(0)
+              : money(cents(row.tax)),
+        row.manualCredit !== undefined
+          ? "Included"
+          : row.customerPrice
+            ? row.customerPrice.op === null
+              ? "Included"
+              : money(cents(row.customerPrice.op))
+            : row.action === "remove"
+              ? money(0)
+              : money(cents(row.op)),
         money(amounts.revised),
       ],
     ];
@@ -478,6 +520,7 @@ export async function generateDocuments(
     );
     ay -= 31;
   });
+  activeItem = "";
   ensure(100);
   ap.drawRectangle({ x: 44, y: ay - 78, width: 524, height: 92, color: LIGHT });
   text(ap, "CHANGE ORDER TOTAL", 55, ay - 5, ab, 9, MUTED);
@@ -495,7 +538,7 @@ export async function generateDocuments(
   right(ap, money(summary.revised), 556, ay - 56, ab, 12);
   ay -= 100;
   flowing(
-    "Tax and O&P amounts reviewed by the project manager. Original printed RCV is the baseline.",
+    "Customer prices confirmed by the estimator. Original printed RCV is the baseline for referenced changes.",
     8,
     af,
     MUTED,

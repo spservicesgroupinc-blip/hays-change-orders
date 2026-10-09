@@ -77,8 +77,49 @@ export function calculateChange(item: ChangeItem): {
   delta: number;
 } {
   const original = item.original ? cents(item.original.rcv) : 0;
-  if (item.action === "remove")
+  if (item.manualCredit !== undefined) {
+    if (
+      item.action !== "remove" ||
+      item.original ||
+      item.customerPrice ||
+      !validDecimal(item.manualCredit) ||
+      cents(item.manualCredit) <= 0
+    )
+      throw new Error(
+        "Enter a positive manual credit without an original estimate item.",
+      );
+    const revised = -cents(item.manualCredit);
+    return { original: 0, revised, delta: revised };
+  }
+  if (item.action === "remove") {
+    if (!item.original || item.customerPrice)
+      throw new Error(
+        "Select an original item to remove, or enter a manual credit.",
+      );
     return { original, revised: 0, delta: -original };
+  }
+  if (item.customerPrice) {
+    const price = item.customerPrice;
+    if (item.quantity.trim() && !validDecimal(item.quantity))
+      throw new Error(
+        "Enter a nonnegative scope quantity or leave it blank for a lump sum.",
+      );
+    if (!validDecimal(price.total, original < 0))
+      throw new Error("Enter the final customer price including tax and O&P.");
+    for (const part of [price.tax, price.op])
+      if (part !== null && !validDecimal(part, original < 0))
+        throw new Error("Enter known tax/O&P dollars or mark them Included.");
+    const revised = cents(price.total);
+    const knownParts = [price.tax, price.op].reduce<number>(
+      (sum, value) => sum + (value === null ? 0 : cents(value)),
+      0,
+    );
+    if (revised >= 0 && knownParts > revised)
+      throw new Error(
+        "Included tax and O&P cannot exceed the final customer price.",
+      );
+    return { original, revised, delta: revised - original };
+  }
   const revisedBase = subtotal(item.quantity, item.rate);
   const revised = item.original
     ? original +
@@ -114,7 +155,7 @@ export function generatedScope(changes: ChangeItem[]): string {
   return changes
     .map(
       (item) =>
-        `${item.action === "add" ? "Add" : item.action === "remove" ? "Remove" : "Revise"} ${item.room ? `${item.room}: ` : ""}${item.description}${item.reason.trim() ? ` - ${item.reason.trim()}` : ""}.`,
+        `${item.manualCredit !== undefined ? "Credit" : item.action === "add" ? "Add" : item.action === "remove" ? "Remove" : "Revise"} ${item.room ? `${item.room}: ` : ""}${item.description}${item.reason.trim() ? ` - ${item.reason.trim()}` : ""}.`,
     )
     .join("\n");
 }
@@ -169,8 +210,23 @@ export function validationErrors(draft: ChangeOrderDraft): string[] {
     errors.push("Added working days must be a whole number from 0 to 3650.");
   if (!draft.changes.length) errors.push("Add at least one changed item.");
   if (!scopeText(draft).trim()) errors.push("Enter a scope summary.");
+  const originals = new Set<string>();
   draft.changes.forEach((row, index) => {
     const prefix = `Item ${index + 1}`;
+    if (row.original) {
+      if (originals.has(row.original.id))
+        errors.push(
+          `${prefix}: the original estimate item is already priced elsewhere in this order.`,
+        );
+      originals.add(row.original.id);
+    }
+    if (
+      (row.action === "add" && row.original) ||
+      (row.action === "revise" && !row.original)
+    )
+      errors.push(
+        `${prefix}: additions start at zero; revisions need an original estimate item.`,
+      );
     if (
       row.original &&
       (baselineProblems(row.original).length || !row.original.reviewed)
@@ -182,6 +238,7 @@ export function validationErrors(draft: ChangeOrderDraft): string[] {
       errors.push(`${prefix}: enter a description and reason.`);
     if (
       row.action !== "remove" &&
+      !row.customerPrice &&
       (!row.unit.trim() ||
         ["quantity", "rate", "tax", "op"].some(
           (key) =>

@@ -73,9 +73,10 @@ export default function Preview({ draft }: { draft: ChangeOrderDraft }) {
           <FileCheck2 size={25} />
         </div>
         <div>
-          <h2>Ready for the next signature.</h2>
+          <h2>Customer change order</h2>
           <p>
-            Your change order and itemized attachment, together in one packet.
+            Approved customer scope and pricing with signature spaces and
+            Attachment A.
           </p>
         </div>
       </div>

@@ -53,6 +53,7 @@ test("mixed changes, previous credits, and zero-net contract totals", () => {
   d.job.previousChanges = "-500";
   const credit = structuredClone(d.changes[0]);
   credit.id = "credit";
+  credit.original!.id = "credited-original";
   credit.action = "remove";
   d.changes.push(credit);
   assert.equal(totals(d).net, -11200);
