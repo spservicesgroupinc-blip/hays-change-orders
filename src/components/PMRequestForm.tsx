@@ -93,6 +93,7 @@ function TextField({
     placeholder,
     required,
     disabled,
+    "aria-label": label,
     "aria-required": required,
     "aria-invalid": Boolean(error),
     "aria-describedby":

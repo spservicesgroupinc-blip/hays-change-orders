@@ -33,12 +33,13 @@ step 4.
    **Change Orders → Run one-time setup** menu.
 2. Accept the OAuth consent for **Google Sheets** and **Google Drive** when
    prompted.
-3. `setup()` creates the **Drafts** sheet, creates the **hays-change-orders**
+3. `setup()` creates the **Drafts** sheet (legacy change orders), the
+   **Requests** sheet (PM request queue), creates the **hays-change-orders**
    Drive folder, and generates an API key. It shows a dialog with:
    - the **API key** → save this for step 5 (`VITE_APPS_SCRIPT_KEY`);
    - the deploy instructions.
 
-Re-running `setup()` is safe: it reuses the existing sheet, folder, and key.
+Re-running `setup()` is safe: it reuses the existing sheets, folder, and key.
 
 > The key is an access guard, not encryption. Anyone who can read the built
 > JavaScript can extract it. For real authentication, replace the key check
@@ -71,21 +72,31 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
 
 ## 6. Verify
 
-1. Open <http://127.0.0.1:3010>, create a draft, and upload a small PDF.
-2. In the spreadsheet, a **Drafts** sheet should appear with one row.
+1. Open <http://127.0.0.1:3010>, create a request, and upload a small PDF.
+2. In the spreadsheet, a **Requests** sheet should appear with one queue row
+   (the full request JSON lives in a per-request Drive folder).
 3. In Google Drive, a folder named **hays-change-orders** should contain the
-   PDF.
-4. Open the app in a second browser/device: the draft should appear and open,
-   and the source PDF should load from Drive.
+   uploaded PDF and a `request-<id>` folder with revision snapshots.
+4. Open the app in a second browser/device: the request should appear in the
+   queue, and attachments should load from Drive.
 
 ## Notes
 
+- **Requests (V2)**: the **Requests** sheet holds searchable queue metadata
+  (status, estimator, job, counts). The full request JSON is stored as
+  immutable revision files in a request-owned Drive folder, so a save or claim
+  cannot be overwritten by a competing window. Attachments are staged in the
+  request folder and only linked once a save references them.
+- **Legacy drafts**: the **Drafts** sheet and the `list/open/save/delete/pdf/
+  uploadPdf` endpoints remain for the legacy four-step editor. Converting a
+  legacy draft copies its PDFs into a new request and carries prior pricing
+  forward for estimator review.
 - **Upload size**: the client caps uploads at 15 MB. Apps Script web-app POST
-  bodies are limited, and the PDF travels as base64 (~1.33× its size).
-- **Limits**: list/open return JSON; the sheet stores the full draft as a JSON
-  string in the `data` column plus a few searchable columns.
-- **Revisions**: a save only lands if its `revision` is greater than or equal
-  to the stored one, so a stale tab cannot overwrite a newer edit.
+  bodies are limited, and files travel as base64 (~1.33× their size).
+- **Limits**: list/open return JSON; the sheet stores summaries rather than
+  full documents.
+- **Revisions**: saves and status changes carry an expected revision and a
+  retry identifier, so a stale tab cannot overwrite a newer edit.
 - **Local tests** expect the default local API path (`/__api__`) and are mocked
   in Playwright. Do not point `.env.local` at the real URL while running the
   browser tests.

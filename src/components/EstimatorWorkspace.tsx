@@ -67,12 +67,14 @@ function Field({
       <span>{label}</span>
       {multiline ? (
         <textarea
+          aria-label={label}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={3}
         />
       ) : (
         <input
+          aria-label={label}
           type={type}
           value={value}
           onChange={(event) => onChange(event.target.value)}

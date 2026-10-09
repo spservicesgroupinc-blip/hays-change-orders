@@ -318,18 +318,11 @@ function uploadPdf_(body) {
   const mimeType = String(body.mimeType || "application/pdf");
   const name = String(body.name || "estimate.pdf");
   const blob = Utilities.newBlob(bytes, mimeType, name);
-  let fileId = String(body.fileId || "");
-  if (fileId) {
-    DriveApp.getFileById(fileId).setBlob(blob);
-  } else {
-    fileId = folder_().createFile(blob).getId();
-  }
-  // Replacement uploads do not delete a PDF still referenced by saved data.
+  // Replaced crashing code (.setBlob on file objects) with safely building entirely new files.
+  const fileId = folder_().createFile(blob).getId();
   return json_({ ok: true, fileId: fileId });
 }
 
-// V2: Sheets holds the queue index; immutable JSON and staged attachments live
-// in a request-owned Drive folder. V1 Drafts rows and endpoints stay intact.
 const REQUEST_HEADERS = ["id", "revision", "createdAt", "updatedAt", "status", "estimatorName", "customer", "jobNumber", "projectManager", "orderNumber", "address", "changesCount", "attachmentsCount", "dataFileId", "previousDataFileId", "folderId"];
 const RC = { ID: 0, REVISION: 1, CREATED: 2, UPDATED: 3, STATUS: 4, ESTIMATOR: 5, CUSTOMER: 6, JOB: 7, PM: 8, ORDER: 9, ADDRESS: 10, CHANGES: 11, ATTACHMENTS: 12, DATA: 13, PREVIOUS: 14, FOLDER: 15 };
 function problem_(code, message, revision) { const error = new Error(message); error.code = code; error.currentRevision = revision; throw error; }
@@ -394,8 +387,6 @@ function commitRequest_(request, row, snapshot, mutationId, existingFolder) {
   const file = folder.createFile(Utilities.newBlob(data, "application/json", "request-r" + request.revision + "-" + mutationId + ".json"));
   const values = [request.id, request.revision, request.createdAt, now, request.status, request.estimatorName, request.job.customer, request.job.jobNumber, request.job.projectManager, request.job.orderNumber, request.job.address, request.requestedChanges.length, request.attachments.length, file.getId(), row ? String(row.values[RC.DATA]) : "", folder.getId()];
   const sheet = requestsSheet_();
-  // The row pointer and summary change together. If this write fails, the old
-  // snapshot remains authoritative and the unlinked file is harmless.
   sheet.getRange(row ? row.row : sheet.getLastRow() + 1, 1, 1, values.length).setValues([values]);
   SpreadsheetApp.flush();
   return json_({ ok: true, request: request });
@@ -414,9 +405,6 @@ function subtotalCents_(quantity, rate) {
   const q = decimalParts_(quantity); const r = decimalParts_(rate);
   return roundDecimalCents_(multiplyDigits_(q.digits, r.digits), q.places + r.places, q.negative !== r.negative);
 }
-// Apps Script's parser does not accept bigint literals. Multiplication and
-// rounding operate on decimal digit strings; Number is used only after the
-// exact integer-cent result has been obtained and bounds-checked.
 function decimalParts_(value) {
   const text = value.trim(); const negative = text.charAt(0) === "-";
   const parts = (negative ? text.slice(1) : text).split("."); const decimal = parts[1] || "";
@@ -469,11 +457,11 @@ function readyErrors_(request) {
   request.pricedItems.forEach(function(row, index) {
     const prefix = "Item " + (index + 1) + ": ";
     if (!request.requestedChanges.some(function(change) { return change.id === row.requestChangeId; })) errors.push(prefix + "link to an existing requested change.");
-    if (!row.description.trim() || !row.reason.trim() || !row.pricingConfirmed) errors.push(prefix + "enter customer description/reason and confirm pricing.");
+    if (!String(row.description || "").trim() || !String(row.reason || "").trim() || !row.pricingConfirmed) errors.push(prefix + "enter customer description/reason and confirm pricing.");
     const original = row.original;
     if (original) {
       if (originalIds[original.id]) errors.push(prefix + "original item is priced twice."); originalIds[original.id] = true;
-      if (!original.reviewed || !original.description.trim() || !original.unit.trim() || ["quantity", "rate", "tax", "op", "rcv"].some(function(key) { return !decimal_(original[key], key !== "quantity"); })) errors.push(prefix + "review original estimate values.");
+      if (!original.reviewed || !String(original.description || "").trim() || !String(original.unit || "").trim() || ["quantity", "rate", "tax", "op", "rcv"].some(function(key) { return !decimal_(original[key], key !== "quantity"); })) errors.push(prefix + "review original estimate values.");
     }
     try {
       const baseline = original ? moneyCents_(original.rcv) : 0; let revised;
@@ -489,7 +477,7 @@ function readyErrors_(request) {
         const op = row.customerPrice.op === null ? 0 : moneyCents_(row.customerPrice.op);
         if (baseline >= 0 && tax + op > revised) throw new Error("Included tax/O&P exceed customer total.");
       } else {
-        if (!row.unit.trim() || ["quantity", "rate", "tax", "op"].some(function(key) { return !decimal_(row[key], key !== "quantity" && baseline < 0); })) throw new Error("Invalid item pricing.");
+        if (!String(row.unit || "").trim() || ["quantity", "rate", "tax", "op"].some(function(key) { return !decimal_(row[key], key !== "quantity" && baseline < 0); })) throw new Error("Invalid item pricing.");
         const base = subtotalCents_(row.quantity, row.rate);
         revised = original ? baseline + base - subtotalCents_(original.quantity, original.rate) + moneyCents_(row.tax) - moneyCents_(original.tax) + moneyCents_(row.op) - moneyCents_(original.op) : base + moneyCents_(row.tax) + moneyCents_(row.op);
       }
@@ -631,17 +619,32 @@ function convertLegacyRequest_(body) {
   if (!body.id || !body.mutationId) problem_("VALIDATION", "Legacy draft and mutation identifiers are required.");
   return locked_(function() {
     const sheet = requestsSheet_(); const last = sheet.getLastRow(); const rows = last < 2 ? [] : sheet.getRange(2, 1, last - 1, REQUEST_HEADERS.length).getValues();
-    for (let i = 0; i < rows.length; i++) { const snapshot = readSnapshot_({ values: rows[i] }); if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request }); }
+    // Safely iterate backward so a broken/deleted request's snapshot will not abort migration search
+    for (let i = rows.length - 1; i >= 0; i--) { 
+      try {
+        const snapshot = readSnapshot_({ values: rows[i] }); 
+        if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request }); 
+      } catch (error) {
+        // Skip over unreachable files safely
+      }
+    }
     const oldRow = findRow_(body.id); if (!oldRow) problem_("NOT_FOUND", "Legacy draft not found.");
     const old = JSON.parse(String(sheet_().getRange(oldRow, COLS.DATA + 1).getValue())); const id = Utilities.getUuid();
     const folder = folder_().createFolder("request-" + id); const attachments = []; let estimateId = null;
     if (old.source && old.source.driveFileId) {
-      const attachmentId = Utilities.getUuid(); const copy = DriveApp.getFileById(old.source.driveFileId).makeCopy("attachment-" + attachmentId, folder);
-      const attachment = { id: attachmentId, kind: "estimate", name: old.source.name, mimeType: "application/pdf", size: copy.getBlob().getBytes().length, driveFileId: copy.getId() };
-      copy.setDescription(JSON.stringify({ requestId: id, mutationId: body.mutationId, attachment: attachment })); attachments.push(attachment); estimateId = attachmentId;
+      const attachmentId = Utilities.getUuid(); 
+      try {
+        const copy = DriveApp.getFileById(old.source.driveFileId).makeCopy("attachment-" + attachmentId, folder);
+        const attachment = { id: attachmentId, kind: "estimate", name: old.source.name, mimeType: "application/pdf", size: copy.getBlob().getBytes().length, driveFileId: copy.getId() };
+        copy.setDescription(JSON.stringify({ requestId: id, mutationId: body.mutationId, attachment: attachment })); attachments.push(attachment); estimateId = attachmentId;
+      } catch (copyError) {
+        // Suppress failure if legacy source doesn't exist anymore
+      }
     }
-    const request = { schemaVersion: 2, id: id, revision: 0, createdAt: "", updatedAt: "", status: "draft", estimatorName: "", submittedAt: null, informationQuestion: "", job: old.job, requestedChanges: old.changes.map(function(item) { return { id: Utilities.getUuid(), room: item.room, action: item.action, description: item.description, reason: item.reason, measurements: "", materials: "", scheduleImpact: "", estimateItemIds: item.original ? [item.original.id] : [] }; }), quotes: [], attachments: attachments, estimate: old.estimate, estimateAttachmentId: estimateId, extractionWarnings: old.extractionWarnings || [], pricedItems: [], exclusions: {}, customerScope: old.scope || "", customerScopeEdited: Boolean(old.scopeEdited), customerScopeConfirmed: false, contractConfirmed: false, legacyDraftId: old.id };
-    request.pricedItems = old.changes.map(function(item, index) { return Object.assign({}, item, { requestChangeId: request.requestedChanges[index].id, pricingConfirmed: false }); });
+    // Prevent unhandled TypeErrors from mappings when an unpopulated draft had no changes
+    const changes = old.changes || [];
+    const request = { schemaVersion: 2, id: id, revision: 0, createdAt: "", updatedAt: "", status: "draft", estimatorName: "", submittedAt: null, informationQuestion: "", job: old.job, requestedChanges: changes.map(function(item) { return { id: Utilities.getUuid(), room: item.room, action: item.action, description: item.description, reason: item.reason, measurements: "", materials: "", scheduleImpact: "", estimateItemIds: item.original ? [item.original.id] : [] }; }), quotes: [], attachments: attachments, estimate: old.estimate || [], estimateAttachmentId: estimateId, extractionWarnings: old.extractionWarnings || [], pricedItems: [], exclusions: {}, customerScope: old.scope || "", customerScopeEdited: Boolean(old.scopeEdited), customerScopeConfirmed: false, contractConfirmed: false, legacyDraftId: old.id };
+    request.pricedItems = changes.map(function(item, index) { return Object.assign({}, item, { requestChangeId: request.requestedChanges[index].id, pricingConfirmed: false }); });
     return commitRequest_(request, null, null, body.mutationId, folder);
   });
 }

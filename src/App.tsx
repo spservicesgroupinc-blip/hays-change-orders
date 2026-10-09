@@ -1,127 +1,76 @@
-import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  Plus,
-  UploadCloud,
+  CheckCircle2,
+  Clock3,
   FileText,
-  Check,
-  CheckCheck,
   FolderOpen,
+  Plus,
   Search,
-  Trash2,
-  Pencil,
-  Minus,
-  CircleAlert,
-  Save,
+  Send,
   ShieldCheck,
   X,
-  ChevronRight,
-  Clock3,
 } from "lucide-react";
 import {
-  createDraft,
-  createChange,
-  blankEstimate,
-  type ChangeOrderDraft,
-  type EstimateItem,
-  type ChangeItem,
-  type JobDetails,
-  type SourceFile,
+  newId,
+  type AttachmentKind,
+  type ChangeRequest,
   type DraftSummary,
+  type JobDetails,
+  type PendingUpload,
+  type RequestAttachment,
+  type RequestStatus,
+  type RequestSummary,
 } from "./types";
+import { createRequest } from "./services/requests";
 import {
-  listDrafts,
-  saveDraft,
-  deleteDraft,
-  openDraft,
-  fetchSourcePdf,
-  uploadPdf,
   blobToBase64,
+  claimRequest,
+  convertLegacyRequest,
+  fetchAttachment,
+  listDrafts,
+  listRequests,
+  openRequest,
+  transitionRequest,
+  uploadAttachment,
 } from "./services/storage";
 import {
-  baselineProblems,
-  calculateChange,
-  cents,
-  money,
-  signedMoney,
-  scopeText,
-  validDecimal,
-  validationErrors,
-} from "./services/pricing";
-const PdfViewer = lazy(() => import("./components/PdfViewer"));
-const Preview = lazy(() => import("./components/Preview"));
-const STEPS = [
-  "Upload estimate",
-  "Enter changes",
-  "Confirm job details",
-  "Preview & download",
-];
-const numericFields = [
-  ["quantity", "Quantity"],
-  ["rate", "Unit price ($)"],
-  ["tax", "Tax ($)"],
-  ["op", "O&P ($)"],
-  ["rcv", "Original RCV ($)"],
-] as const;
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  required = false,
-  help,
-  disabled = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  required?: boolean;
-  help?: string;
-  disabled?: boolean;
-}) {
-  const helpId = useId();
-  return (
-    <label className="field">
-      <span>
-        {label}
-        {required ? <b aria-hidden="true"> *</b> : null}
-      </span>
-      <input
-        aria-label={label}
-        aria-describedby={help ? helpId : undefined}
-        type={type}
-        inputMode={
-          type === "text" && /\$|quantity|days/i.test(label)
-            ? "decimal"
-            : undefined
-        }
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        aria-required={required}
-      />
-      {help ? <small id={helpId}>{help}</small> : null}
-    </label>
-  );
-}
-function Amount({ item }: { item: ChangeItem }) {
+  RequestEditor,
+  listRecoveries,
+  persistRecovery,
+} from "./services/requestEditor";
+import PMRequestForm from "./components/PMRequestForm";
+import EstimatorWorkspace from "./components/EstimatorWorkspace";
+import LegacyWorkspace from "./LegacyWorkspace";
+import PdfViewer from "./components/PdfViewer";
+import "./app.css";
+
+const STATUS_LABELS: Record<RequestStatus, string> = {
+  draft: "Draft",
+  submitted: "In queue",
+  in_review: "In review",
+  needs_information: "Needs info",
+  ready: "Ready",
+};
+type View =
+  | { kind: "home" }
+  | { kind: "request"; id: string }
+  | { kind: "legacy"; startNew: boolean };
+const VIEW_KEY = "hays-active-view";
+function restoreView(): View {
   try {
-    const amount = calculateChange(item);
-    return (
-      <strong
-        className={
-          amount.delta < 0 ? "credit" : amount.delta > 0 ? "accent" : ""
-        }
-      >
-        {signedMoney(amount.delta)}
-      </strong>
-    );
-  } catch {
-    return <span className="muted">Complete pricing</span>;
-  }
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as View;
+      if (parsed.kind === "legacy") return { kind: "legacy", startNew: false };
+      if (parsed.kind === "request" && parsed.id)
+        return { kind: "request", id: parsed.id };
+    }
+  } catch {}
+  return { kind: "home" };
 }
+
 function Brand() {
   return (
     <div className="brand">
@@ -137,405 +86,534 @@ function Brand() {
     </div>
   );
 }
-function SourcePanel({ source, page }: { source: SourceFile; page: number }) {
-  const [blob, setBlob] = useState<Blob | null>(source.blob);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    if (blob || !source.driveFileId) return;
-    let active = true;
-    void fetchSourcePdf(source.driveFileId)
-      .then((result) => {
-        if (active) setBlob(result.blob);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, [blob, source.driveFileId]);
-  if (failed)
-    return (
-      <div className="empty">
-        <FileText size={24} />
-        <p>The source PDF could not be loaded from the cloud.</p>
-      </div>
-    );
-  if (!blob) return <div className="empty">Loading source PDF…</div>;
+
+function ClaimScreen({
+  request,
+  claimName,
+  onClaimName,
+  onClaim,
+  onBack,
+  busy,
+}: {
+  request: ChangeRequest;
+  claimName: string;
+  onClaimName: (value: string) => void;
+  onClaim: () => void;
+  onBack: () => void;
+  busy: boolean;
+}) {
   return (
-    <Suspense fallback={<div className="empty">Loading source PDF…</div>}>
-      <PdfViewer blob={blob} page={page} label="Source estimate" />
-    </Suspense>
+    <div className="shell-claim">
+      <button className="back-link" onClick={onBack}>
+        <ArrowLeft size={15} />
+        Back to requests
+      </button>
+      <div className="shell-claim-card">
+        <div className="empty-icon">
+          <Send size={26} />
+        </div>
+        <h2>This request is waiting in the queue.</h2>
+        <p>
+          <strong>{request.job.customer || "Unnamed project"}</strong>
+          {request.job.jobNumber ? ` · ${request.job.jobNumber}` : ""}
+          <br />
+          {request.requestedChanges.length} requested{" "}
+          {request.requestedChanges.length === 1 ? "change" : "changes"} ·{" "}
+          {request.attachments.length} attachment
+          {request.attachments.length === 1 ? "" : "s"}
+        </p>
+        <label className="field shell-claim-field">
+          <span>Your name</span>
+          <input
+            aria-label="Estimator name"
+            value={claimName}
+            placeholder="Enter your name to claim this request"
+            onChange={(event) => onClaimName(event.target.value)}
+          />
+        </label>
+        <button
+          className="button primary large full"
+          disabled={!claimName.trim() || busy}
+          onClick={onClaim}
+        >
+          <CheckCircle2 size={17} />
+          {busy ? "Claiming…" : "Claim this request"}
+        </button>
+      </div>
+    </div>
   );
 }
+
+function AttachmentPreview({
+  preview,
+  onClose,
+}: {
+  preview: { name: string; blob: Blob } | null;
+  onClose: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!preview) {
+      setUrl("");
+      return;
+    }
+    const next = URL.createObjectURL(preview.blob);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [preview]);
+  if (!preview) return null;
+  return (
+    <div
+      className="shell-modal"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="shell-modal-box"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="shell-modal-head">
+          <strong>{preview.name}</strong>
+          <button
+            className="icon-button"
+            aria-label="Close preview"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="shell-modal-body">
+          {preview.blob.type.startsWith("image/") ? (
+            <img src={url} alt={preview.name} />
+          ) : (
+            <PdfViewer blob={preview.blob} label={preview.name} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [draft, setDraft] = useState<ChangeOrderDraft | null>(null);
-  const [saved, setSaved] = useState<DraftSummary[]>([]);
+  const [view, setViewState] = useState<View>(restoreView);
+  const [requests, setRequests] = useState<RequestSummary[]>([]);
+  const [legacyDrafts, setLegacyDrafts] = useState<DraftSummary[]>([]);
   const [ready, setReady] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">(
+  const [listError, setListError] = useState("");
+  const [homeSearch, setHomeSearch] = useState("");
+  const [legacySearch, setLegacySearch] = useState("");
+  const [converting, setConverting] = useState("");
+
+  const [request, setRequest] = useState<ChangeRequest | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">(
     "saved",
   );
-  const [storageError, setStorageError] = useState("");
-  const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [busy, setBusy] = useState("");
-  const [search, setSearch] = useState("");
-  const [sourcePage, setSourcePage] = useState(1);
-  const [editItem, setEditItem] = useState<string | null>(null);
-  const [homeSearch, setHomeSearch] = useState("");
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const fileInput = useRef<HTMLInputElement>(null);
-  const uploadToken = useRef(0);
-  const dirty = useRef(false);
-  const latestSave = useRef(0);
-  useEffect(() => {
-    let active = true;
-    void listDrafts()
-      .then(async (records) => {
-        if (!active) return;
-        setSaved(records);
-        let selected: string | null = null;
-        try {
-          selected = localStorage.getItem("hays-active-draft");
-        } catch {}
-        if (selected) {
-          try {
-            const recovered = await openDraft(selected);
-            if (active) setDraft(recovered);
-          } catch {
-            if (active)
-              setStorageError("Your last draft could not be reopened.");
-          }
-        }
-      })
-      .catch((e) => {
-        if (active) {
-          setStorageError(e.message);
-          setSaveStatus("error");
-        }
-      })
-      .finally(() => {
-        if (active) setReady(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const persist = async (value: ChangeOrderDraft) => {
-    const request = ++latestSave.current;
-    setSaveStatus("saving");
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [preview, setPreview] = useState<{ name: string; blob: Blob } | null>(
+    null,
+  );
+  const [claimName, setClaimName] = useState("");
+  const editorRef = useRef<RequestEditor | null>(null);
+  const flushTimer = useRef<number | null>(null);
+  const pendingFiles = useRef(
+    new Map<string, { file: File; kind: AttachmentKind; quoteId?: string }>(),
+  );
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  function setView(next: View) {
+    viewRef.current = next;
+    setViewState(next);
     try {
-      await saveDraft(value);
-      if (
-        request === latestSave.current &&
-        draftRef.current?.id === value.id &&
-        draftRef.current.revision === value.revision
-      ) {
-        setSaveStatus("saved");
-        setStorageError("");
-        dirty.current = false;
-      }
-    } catch (e) {
-      if (request === latestSave.current) {
-        setSaveStatus("error");
-        setStorageError(
-          e instanceof Error ? e.message : "Device storage is unavailable.",
-        );
-        dirty.current = true;
-      }
-      throw e;
-    }
-  };
-  useEffect(() => {
-    if (!ready || !draft) return;
-    dirty.current = true;
-    setSaveStatus("saving");
-    const timer = setTimeout(() => {
-      void persist(draft).catch(() => {});
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [draft, ready]);
-  useEffect(() => {
-    const hide = () => {
-      if (
-        document.visibilityState === "hidden" &&
-        draftRef.current &&
-        dirty.current
-      )
-        void persist(draftRef.current).catch(() => {});
-    };
-    const before = (event: BeforeUnloadEvent) => {
-      if (dirty.current) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    };
-    document.addEventListener("visibilitychange", hide);
-    window.addEventListener("beforeunload", before);
-    return () => {
-      document.removeEventListener("visibilitychange", hide);
-      window.removeEventListener("beforeunload", before);
-    };
-  }, []);
-  const remember = (id: string | null) => {
-    try {
-      if (id) localStorage.setItem("hays-active-draft", id);
-      else localStorage.removeItem("hays-active-draft");
-    } catch {}
-  };
-  const update = (fn: (value: ChangeOrderDraft) => ChangeOrderDraft) =>
-    setDraft((current) =>
-      current
-        ? {
-            ...fn(current),
-            revision: current.revision + 1,
-            updatedAt: new Date().toISOString(),
-          }
-        : current,
-    );
-  const go = (step: number) => {
-    setError("");
-    update((d) => ({ ...d, step }));
-  };
-  const backHome = async () => {
-    let current = draftRef.current;
-    while (current) {
-      try {
-        await persist(current);
-      } catch {
-        setError(
-          "Your draft is still in this window. Retry saving before returning to drafts.",
-        );
-        return;
-      }
-      if (
-        draftRef.current?.revision === current.revision &&
-        draftRef.current.id === current.id
-      )
-        break;
-      current = draftRef.current;
-    }
-    uploadToken.current++;
-    setDraft(null);
-    remember(null);
-    setError("");
-    setSearch("");
-    setEditItem(null);
-    try {
-      setSaved(await listDrafts());
-    } catch (e) {
-      setStorageError(String(e));
-    }
-  };
-  const newDraft = () => {
-    const next = createDraft();
-    setDraft(next);
-    remember(next.id);
-    setError("");
-    setSearch("");
-  };
-  const jobChange = (key: keyof JobDetails, value: string | boolean) =>
-    update((d) => ({ ...d, job: { ...d.job, [key]: value } }));
-  const baselineChange = (
-    id: string,
-    field: keyof EstimateItem,
-    value: unknown,
-  ) =>
-    update((d) => {
-      const estimate = d.estimate.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              [field]: value,
-              reviewed: field === "reviewed" ? Boolean(value) : false,
-            }
-          : row,
+      localStorage.setItem(
+        VIEW_KEY,
+        JSON.stringify({ ...next, startNew: false }),
       );
-      const original = estimate.find((row) => row.id === id)!;
-      return {
-        ...d,
-        estimate,
-        changes: d.changes.map((row) =>
-          row.original?.id === id
+    } catch {}
+  }
+
+  const refresh = async () => {
+    try {
+      const [requestRows, legacyRows] = await Promise.all([
+        listRequests(),
+        listDrafts(),
+      ]);
+      setRequests(requestRows);
+      setLegacyDrafts(legacyRows);
+      setListError("");
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  useEffect(() => {
+    void refresh().finally(() => setReady(true));
+    const initial = viewRef.current;
+    if (initial.kind === "request") void openRequestById(initial.id);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") void flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function attachEditor(editor: RequestEditor) {
+    editorRef.current = editor;
+    editor.onUpdate = () => {
+      setRequest({ ...editor.current });
+      setSaveStatus(editor.status);
+      setSaveError(editor.error || editor.recoveryError);
+    };
+    editor.onUpdate();
+  }
+  function openEditor(
+    data: ChangeRequest,
+    recovered?: Awaited<ReturnType<typeof listRecoveries>>[number],
+  ) {
+    attachEditor(new RequestEditor(data, undefined, persistRecovery, recovered));
+    setPendingUploads([]);
+    pendingFiles.current.clear();
+    setSaveError("");
+    setBusy("");
+    setClaimName("");
+    setView({ kind: "request", id: data.id });
+  }
+  async function openRequestById(id: string) {
+    setBusy("Opening request…");
+    try {
+      const [data, recoveries] = await Promise.all([
+        openRequest(id),
+        listRecoveries(),
+      ]);
+      const recovered = recoveries.find((record) => record.request.id === id);
+      openEditor(data, recovered);
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+  function newRequest() {
+    openEditor(createRequest());
+  }
+  async function flush() {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    await editorRef.current?.flush();
+  }
+  function scheduleFlush() {
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = window.setTimeout(() => {
+      flushTimer.current = null;
+      void editorRef.current?.flush().catch(() => {});
+    }, 500);
+  }
+  function edit(next: ChangeRequest) {
+    editorRef.current?.edit(next);
+    scheduleFlush();
+  }
+  function patch(fn: (current: ChangeRequest) => ChangeRequest) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.edit(fn(editor.current));
+    scheduleFlush();
+  }
+
+  const goHome = async () => {
+    await flush();
+    setView({ kind: "home" });
+    setRequest(null);
+    editorRef.current = null;
+    setPendingUploads([]);
+    pendingFiles.current.clear();
+    setPreview(null);
+    void refresh();
+  };
+
+  async function submitRequest() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setBusy("Submitting…");
+    setSaveError("");
+    try {
+      await flush();
+      const server = await transitionRequest(
+        editor.current.id,
+        editor.current.revision,
+        "submitted",
+        "",
+        newId(),
+      );
+      editor.commit(server);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+  async function claim() {
+    const editor = editorRef.current;
+    if (!editor || !claimName.trim()) return;
+    setBusy("Claiming…");
+    setSaveError("");
+    try {
+      const server = await claimRequest(
+        editor.current.id,
+        editor.current.revision,
+        claimName.trim(),
+        newId(),
+      );
+      editor.commit(server);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+  async function askInformation(question: string) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setBusy("Sending request…");
+    setSaveError("");
+    try {
+      await flush();
+      const server = await transitionRequest(
+        editor.current.id,
+        editor.current.revision,
+        "needs_information",
+        question,
+        newId(),
+      );
+      editor.commit(server);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+  async function markReady() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setBusy("Preparing documents…");
+    setSaveError("");
+    try {
+      await flush();
+      const server = await transitionRequest(
+        editor.current.id,
+        editor.current.revision,
+        "ready",
+        "",
+        newId(),
+      );
+      editor.commit(server);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function addPending(file: File, kind: AttachmentKind, quoteId?: string) {
+    const id = newId();
+    pendingFiles.current.set(id, { file, kind, quoteId });
+    setPendingUploads((list) => [
+      ...list,
+      { id, name: file.name, state: "uploading" },
+    ]);
+    return id;
+  }
+  async function runUpload(
+    id: string,
+    entry: { file: File; kind: AttachmentKind; quoteId?: string },
+  ) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setPendingUploads((list) =>
+      list.map((item) =>
+        item.id === id
+          ? { ...item, state: "uploading", error: undefined }
+          : item,
+      ),
+    );
+    try {
+      await flush();
+      const { file, kind, quoteId } = entry;
+      const mimeType =
+        file.type || (kind === "photo" ? "image/jpeg" : "application/pdf");
+      const base64 = await blobToBase64(file);
+      const attachment = await uploadAttachment(
+        editor.current.id,
+        { name: file.name, mimeType, size: file.size, kind, data: base64 },
+        id,
+        newId(),
+      );
+      if (kind === "estimate") {
+        setBusy("Reading the estimate…");
+        try {
+          const { extractEstimate } = await import("./services/pdfExtract");
+          const result = await extractEstimate(file, (message) =>
+            setBusy(message),
+          );
+          patch((current) => ({
+            ...current,
+            attachments: [...current.attachments, attachment],
+            estimateAttachmentId: attachment.id,
+            estimate: result.items,
+            extractionWarnings: result.warnings,
+            job: {
+              ...current.job,
+              ...Object.fromEntries(
+                Object.entries(result.job).filter(
+                  ([key]) =>
+                    !String(current.job[key as keyof JobDetails] ?? "").trim(),
+                ),
+              ),
+            },
+          }));
+        } finally {
+          setBusy("");
+        }
+      } else if (kind === "quote" && quoteId) {
+        patch((current) => ({
+          ...current,
+          attachments: [...current.attachments, attachment],
+          quotes: current.quotes.map((quote) =>
+            quote.id === quoteId
+              ? {
+                  ...quote,
+                  attachmentIds: [...quote.attachmentIds, attachment.id],
+                }
+              : quote,
+          ),
+        }));
+      } else {
+        patch((current) => ({
+          ...current,
+          attachments: [...current.attachments, attachment],
+        }));
+      }
+      pendingFiles.current.delete(id);
+      setPendingUploads((list) => list.filter((item) => item.id !== id));
+    } catch (error) {
+      setPendingUploads((list) =>
+        list.map((item) =>
+          item.id === id
             ? {
-                ...row,
-                original: structuredClone(original),
-                pricingConfirmed: false,
+                ...item,
+                state: "failed",
+                error:
+                  error instanceof Error ? error.message : "Upload failed.",
               }
-            : row,
+            : item,
         ),
+      );
+    }
+  }
+  async function handleUpload(
+    files: File[],
+    kind: AttachmentKind,
+    quoteId?: string,
+  ) {
+    for (const file of files) {
+      const id = addPending(file, kind, quoteId);
+      const entry = pendingFiles.current.get(id);
+      if (entry) void runUpload(id, entry);
+    }
+  }
+  function retryUpload(id: string) {
+    const entry = pendingFiles.current.get(id);
+    if (entry) void runUpload(id, entry);
+  }
+  function removePendingUpload(id: string) {
+    pendingFiles.current.delete(id);
+    setPendingUploads((list) => list.filter((item) => item.id !== id));
+  }
+  function removeAttachment(id: string) {
+    patch((current) => {
+      const isEstimate = current.estimateAttachmentId === id;
+      return {
+        ...current,
+        attachments: current.attachments.filter((item) => item.id !== id),
+        quotes: current.quotes.map((quote) => ({
+          ...quote,
+          attachmentIds: quote.attachmentIds.filter((value) => value !== id),
+        })),
+        estimate: isEstimate ? [] : current.estimate,
+        estimateAttachmentId: isEstimate ? null : current.estimateAttachmentId,
+        requestedChanges: isEstimate
+          ? current.requestedChanges.map((change) => ({
+              ...change,
+              estimateItemIds: [],
+            }))
+          : current.requestedChanges,
       };
     });
-  const changeChange = (id: string, field: keyof ChangeItem, value: unknown) =>
-    update((d) => ({
-      ...d,
-      changes: d.changes.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              [field]: value,
-              pricingConfirmed:
-                field === "pricingConfirmed" ? Boolean(value) : false,
-            }
-          : row,
-      ),
-    }));
-  const choose = (original: EstimateItem, action: "revise" | "remove") =>
-    update((d) => ({
-      ...d,
-      changes: d.changes.some((row) => row.original?.id === original.id)
-        ? d.changes.map((row) =>
-            row.original?.id === original.id
-              ? { ...row, action, pricingConfirmed: false }
-              : row,
-          )
-        : [...d.changes, createChange(original, action)],
-    }));
-  const upload = async (file: File) => {
-    if (!draft || busy) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Upload a PDF estimate.");
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      setError("Choose a PDF smaller than 15 MB.");
-      return;
-    }
-    if (
-      draft.source &&
-      !window.confirm(
-        "Replacing the estimate will clear the existing item changes. Job details and the scope summary will be kept.",
-      )
-    )
-      return;
-    const token = ++uploadToken.current;
-    setBusy("Opening your estimate…");
-    setError("");
+  }
+  async function previewAttachment(attachment: RequestAttachment) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setBusy("Opening file…");
     try {
-      const { extractEstimate } = await import("./services/pdfExtract");
-      const result = await extractEstimate(file, (message) => {
-        if (token === uploadToken.current) setBusy(message);
-      });
-      if (token !== uploadToken.current) return;
-      const warnings = [...result.warnings];
-      let driveFileId: string | null = null;
-      try {
-        if (token === uploadToken.current) setBusy("Saving your estimate…");
-        const base64 = await blobToBase64(file);
-        driveFileId = await uploadPdf(
-          file.name,
-          file.type || "application/pdf",
-          base64,
-          draftRef.current?.source?.driveFileId ?? null,
-        );
-      } catch {
-        if (token === uploadToken.current)
-          warnings.push(
-            "The source PDF could not be saved to the cloud; it will only be available on this device.",
-          );
-      }
-      if (token !== uploadToken.current) return;
-      update((d) => ({
-        ...d,
-        source: {
-          name: file.name,
-          blob: file,
-          pages: result.pages,
-          driveFileId,
-        },
-        estimate: result.items,
-        changes: [],
-        extractionWarnings: warnings,
-        job: {
-          ...d.job,
-          ...Object.fromEntries(
-            Object.entries(result.job).filter(
-              ([key]) => !String(d.job[key as keyof JobDetails] ?? "").trim(),
-            ),
-          ),
-        },
-      }));
-      setSourcePage(1);
-      setEditItem(null);
-    } catch (e) {
-      if (token === uploadToken.current)
-        setError(
-          `The PDF could not be read. ${e instanceof Error ? e.message : ""} Try a text-based Final Draft PDF or enter items manually.`,
-        );
+      const result = await fetchAttachment(editor.current.id, attachment.id);
+      setPreview({ name: result.name, blob: result.blob });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
-      if (token === uploadToken.current) setBusy("");
+      setBusy("");
     }
-  };
-  const addBaseline = () => {
-    const row = blankEstimate();
-    update((d) => ({ ...d, estimate: [...d.estimate, row] }));
-    setEditItem(row.id);
-  };
-  const filtered =
-    draft?.estimate.filter((row) =>
-      `${row.room} ${row.lineNumber} ${row.description}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-    ) ?? [];
-  const originalTable = (
-    <table className="estimate-table">
-      <thead>
-        <tr>
-          <th scope="col">Line</th>
-          <th scope="col">Room / item</th>
-          <th scope="col">Quantity</th>
-          <th scope="col">RCV</th>
-          <th scope="col">Review</th>
-        </tr>
-      </thead>
-      <tbody>
-        {filtered.map((row) => (
-          <tr key={row.id}>
-            <td>{row.lineNumber || "+"}</td>
-            <td>
-              <small>{row.room || "Unassigned room"}</small>
-              <span>{row.description || "Untitled item"}</span>
-            </td>
-            <td>
-              {row.quantity || "—"}
-              <small>{row.unit}</small>
-            </td>
-            <td>{validDecimal(row.rcv, true) ? money(cents(row.rcv)) : "—"}</td>
-            <td>
-              <button
-                className={`icon-button ${row.reviewed ? "credit" : ""}`}
-                aria-label={`Review original line ${row.lineNumber || "manual item"}`}
-                onClick={() => {
-                  setEditItem(editItem === row.id ? null : row.id);
-                  if (row.page) setSourcePage(row.page);
-                }}
-              >
-                {row.reviewed ? <Check size={15} /> : <Pencil size={14} />}
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-  let net: number | null = 0;
-  if (draft)
+  }
+  async function convert(id: string) {
+    setConverting(id);
+    setListError("");
     try {
-      net = draft.changes.reduce(
-        (sum, row) => sum + calculateChange(row).delta,
-        0,
-      );
-    } catch {
-      net = null;
+      const converted = await convertLegacyRequest(id, newId());
+      openEditor(converted);
+      void refresh();
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setConverting("");
     }
+  }
+
+  const filteredRequests = requests.filter((item) =>
+    `${item.job.customer} ${item.job.jobNumber} ${item.job.projectManager}`
+      .toLowerCase()
+      .includes(homeSearch.toLowerCase()),
+  );
+  const filteredLegacy = legacyDrafts.filter((item) =>
+    `${item.job.customer} ${item.job.jobNumber}`
+      .toLowerCase()
+      .includes(legacySearch.toLowerCase()),
+  );
+
   if (!ready)
     return (
       <div className="boot">
         <Brand />
         <div className="spinner" />
-        <p>Opening your saved drafts…</p>
+        <p>Opening your change orders…</p>
       </div>
     );
+
+  if (view.kind === "legacy")
+    return (
+      <LegacyWorkspace
+        startNew={view.startNew}
+        converting={Boolean(converting)}
+        onExit={() => void goHome()}
+        onConvert={convert}
+      />
+    );
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -543,1160 +621,284 @@ export default function App() {
         <div className="topbar-right">
           <span className="local-label">
             <ShieldCheck size={15} />
-            Synced to Google Sheets
+            Shared with your team
           </span>
-          {draft ? (
+          {view.kind === "request" ? (
+            <button className="button small" onClick={() => void goHome()}>
+              <FolderOpen size={16} />
+              All requests
+            </button>
+          ) : (
             <button
               className="button small"
-              disabled={!!busy}
-              onClick={() => void backHome()}
+              onClick={() => setView({ kind: "legacy", startNew: false })}
             >
               <FolderOpen size={16} />
-              My drafts
+              Legacy editor
             </button>
-          ) : null}
+          )}
         </div>
       </header>
-      {storageError ? (
+      {listError && view.kind === "home" ? (
         <div className="storage-error" role="alert">
-          <CircleAlert size={18} />
+          <X size={18} />
           <span>
-            <strong>Draft could not be saved.</strong> {storageError} Your
-            current work remains in this window.
+            <strong>Could not load requests.</strong> {listError}
           </span>
-          <button
-            className="button small"
-            onClick={() => {
-              if (draft) void persist(draft).catch(() => {});
-              else
-                void listDrafts()
-                  .then(setSaved)
-                  .then(() => setStorageError(""))
-                  .catch((e) => setStorageError(String(e)));
-            }}
-          >
+          <button className="button small" onClick={() => void refresh()}>
             Retry
           </button>
         </div>
       ) : null}
-      {!draft ? (
-        <main className="home">
-          <div className="eyebrow">PROJECT MANAGEMENT / DOCUMENTS</div>
+      {view.kind === "request" ? (
+        <main className="shell-request">
+          {saveError ? (
+            <div className="storage-error" role="alert">
+              <X size={18} />
+              <span>
+                <strong>The request could not be saved.</strong> {saveError} Your
+                work remains in this window.
+              </span>
+              <button className="button small" onClick={() => void flush()}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {request ? (
+            request.status === "submitted" ? (
+              <ClaimScreen
+                request={request}
+                claimName={claimName}
+                onClaimName={setClaimName}
+                onClaim={() => void claim()}
+                onBack={() => void goHome()}
+                busy={busy === "Claiming…"}
+              />
+            ) : request.status === "draft" ||
+              request.status === "needs_information" ? (
+              <PMRequestForm
+                request={request}
+                onChange={edit}
+                pendingUploads={pendingUploads}
+                onUpload={handleUpload}
+                onRetryUpload={retryUpload}
+                onRemovePendingUpload={removePendingUpload}
+                onRemoveAttachment={removeAttachment}
+                onPreviewAttachment={(attachment) =>
+                  void previewAttachment(attachment)
+                }
+                onSubmit={() => void submitRequest()}
+                busy={Boolean(busy)}
+                saveStatus={saveStatus}
+              />
+            ) : (
+              <EstimatorWorkspace
+                request={request}
+                onChange={edit}
+                onAskInformation={(question) => void askInformation(question)}
+                onReady={() => void markReady()}
+                onPreviewAttachment={(attachment) =>
+                  void previewAttachment(attachment)
+                }
+                busy={Boolean(busy)}
+              />
+            )
+          ) : (
+            <div className="empty">
+              <div className="spinner" />
+              <p>Loading request…</p>
+            </div>
+          )}
+        </main>
+      ) : (
+        <main className="home shell-home">
+          <div className="eyebrow">PROJECT MANAGEMENT / CHANGE ORDERS</div>
           <div className="home-title">
             <div>
               <h1>
-                A clear record of
+                Describe the change.
                 <br />
-                every change.
+                We'll price the rest.
               </h1>
               <p>
-                From the estimate to the signature.
-                <br className="mobile-break" /> Create a change order in a few
-                simple steps.
+                Send estimating what changed on the job.
+                <br className="mobile-break" /> They confirm pricing and prepare
+                the paperwork.
               </p>
             </div>
-            <button className="button primary large" onClick={newDraft}>
+            <button className="button primary large" onClick={newRequest}>
               <Plus size={20} />
-              New change order
+              New request
             </button>
           </div>
-          <div className="home-workflow">
-            {STEPS.map((step, i) => (
-              <div key={step}>
-                <span>{String(i + 1).padStart(2, "0")}</span>
-                <p>{step}</p>
-                {i < 3 ? <ChevronRight size={17} /> : <CheckCheck size={18} />}
-              </div>
-            ))}
-          </div>
+
           <section className="draft-section">
             <div className="section-heading">
               <div>
                 <h2>
-                  Your drafts <span className="count">{saved.length}</span>
+                  Requests <span className="count">{requests.length}</span>
                 </h2>
                 <p>
-                  Pick up where you left off. Drafts sync automatically across
-                  your team.
+                  Change requests shared with estimating, from first description
+                  to the ready document.
                 </p>
               </div>
-              {saved.length ? (
+              {requests.length ? (
                 <label className="search">
                   <Search size={17} />
                   <input
-                    aria-label="Search drafts"
-                    placeholder="Search customer or job…"
+                    aria-label="Search requests"
+                    placeholder="Customer, job, or PM…"
                     value={homeSearch}
-                    onChange={(e) => setHomeSearch(e.target.value)}
+                    onChange={(event) => setHomeSearch(event.target.value)}
                   />
                 </label>
               ) : null}
             </div>
-            {!saved.length ? (
+            {!requests.length ? (
               <div className="empty-state">
                 <div className="empty-icon">
                   <FileText size={30} />
                 </div>
-                <h3>Your next change order starts here.</h3>
+                <h3>No requests yet.</h3>
                 <p>
-                  Upload a Xactimate estimate, select what’s changing,
+                  Create a request to tell estimating what changed.
                   <br />
-                  and we’ll put the paperwork together.
+                  Estimating claims it, prices it, and prepares the documents.
                 </p>
-                <button className="button" onClick={newDraft}>
+                <button className="button" onClick={newRequest}>
                   <Plus size={16} />
-                  Create your first change order
+                  Create your first request
                 </button>
               </div>
             ) : (
-              <div className="draft-grid">
-                {saved
-                  .filter((d) =>
-                    `${d.job.customer} ${d.job.jobNumber} ${d.job.orderNumber}`
-                      .toLowerCase()
-                      .includes(homeSearch.toLowerCase()),
-                  )
-                  .map((d) => (
-                    <article className="draft-card" key={d.id}>
-                      <div className="draft-card-top">
-                        <span className="badge">{d.job.orderNumber}</span>
-                        <button
-                          className="icon-button"
-                          aria-label={`Delete ${d.job.orderNumber} ${d.job.customer || "untitled draft"}`}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Delete this draft and its estimate for the whole team?",
-                              )
-                            )
-                              void deleteDraft(d.id)
-                                .then(() => listDrafts())
-                                .then(setSaved)
-                                .catch((e) => setStorageError(String(e)));
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <h3>{d.job.customer || "Untitled change order"}</h3>
-                      <p>
-                        {d.job.jobNumber || "Job number pending"} ·{" "}
-                        {d.changesCount} changed items
-                      </p>
-                      <div className="draft-card-bottom">
+              <div className="request-list">
+                {filteredRequests.map((item) => (
+                  <button
+                    className="request-row"
+                    key={item.id}
+                    onClick={() => void openRequestById(item.id)}
+                  >
+                    <span className={`request-status status-${item.status}`}>
+                      {STATUS_LABELS[item.status]}
+                    </span>
+                    <span className="request-row-main">
+                      <strong>{item.job.customer || "Untitled request"}</strong>
+                      <small>
+                        {item.job.jobNumber || "Job pending"} ·{" "}
+                        {item.changesCount}{" "}
+                        {item.changesCount === 1 ? "change" : "changes"}
+                        {item.estimatorName ? ` · ${item.estimatorName}` : ""}
+                      </small>
+                    </span>
+                    <span className="request-row-meta">
+                      {item.attachmentsCount > 0 ? (
                         <small>
-                          <Clock3 size={12} />
-                          {new Date(d.updatedAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
+                          {item.attachmentsCount} file
+                          {item.attachmentsCount === 1 ? "" : "s"}
                         </small>
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            if (busy) return;
-                            setBusy("Opening draft…");
-                            void openDraft(d.id)
-                              .then((full) => {
-                                setDraft(full);
-                                remember(full.id);
-                                setSearch("");
-                                setEditItem(null);
-                                setBusy("");
-                              })
-                              .catch((e) => {
-                                setBusy("");
-                                setStorageError(
-                                  e instanceof Error ? e.message : String(e),
-                                );
-                              });
-                          }}
-                        >
-                          Open draft <ArrowRight size={15} />
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                      ) : null}
+                      <small>
+                        <Clock3 size={12} />
+                        {new Date(item.updatedAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </small>
+                      <ArrowRight size={16} />
+                    </span>
+                  </button>
+                ))}
+                {!filteredRequests.length ? (
+                  <p className="shell-empty-filter">
+                    No requests match your search.
+                  </p>
+                ) : null}
               </div>
             )}
+          </section>
+
+          <section className="draft-section shell-legacy">
+            <div className="section-heading">
+              <div>
+                <h2>
+                  Legacy change orders{" "}
+                  <span className="count">{legacyDrafts.length}</span>
+                </h2>
+                <p>
+                  Drafts from the previous four-step editor. Open to finish, or
+                  convert into a shared request.
+                </p>
+              </div>
+            </div>
+            <div className="shell-legacy-bar">
+              <button
+                className="button primary"
+                onClick={() => setView({ kind: "legacy", startNew: true })}
+              >
+                <Plus size={17} />
+                New change order
+              </button>
+              <button
+                className="button"
+                onClick={() => setView({ kind: "legacy", startNew: false })}
+              >
+                <FolderOpen size={16} />
+                Open legacy drafts
+              </button>
+              {legacyDrafts.length ? (
+                <label className="search">
+                  <Search size={17} />
+                  <input
+                    aria-label="Search legacy drafts"
+                    placeholder="Customer or job…"
+                    value={legacySearch}
+                    onChange={(event) => setLegacySearch(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
+            {legacyDrafts.length ? (
+              <div className="legacy-row-list">
+                {filteredLegacy.map((item) => (
+                  <div className="legacy-row" key={item.id}>
+                    <span className="legacy-row-main">
+                      <strong>{item.job.customer || "Untitled draft"}</strong>
+                      <small>
+                        {item.job.jobNumber || "Job pending"} ·{" "}
+                        {item.changesCount} changed items
+                      </small>
+                    </span>
+                    <button
+                      className="button small"
+                      onClick={() =>
+                        setView({ kind: "legacy", startNew: false })
+                      }
+                    >
+                      Open
+                    </button>
+                    <button
+                      className="button small primary"
+                      disabled={converting === item.id}
+                      onClick={() => void convert(item.id)}
+                    >
+                      {converting === item.id ? "Converting…" : "Convert"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </section>
           <footer className="home-footer">
             <ShieldCheck size={15} />
             <span>
-              Documents are processed in your browser and synced to your team's
-              Google Sheets.
+              Documents are prepared in your browser and synced through Google
+              Sheets and Drive.
             </span>
           </footer>
         </main>
-      ) : (
-        <div className="workspace">
-          <aside className="rail">
-            <button
-              className="back-link"
-              disabled={!!busy}
-              onClick={() => void backHome()}
-            >
-              <ArrowLeft size={15} />
-              All drafts
-            </button>
-            <div className="rail-job">
-              <span className="eyebrow">CHANGE ORDER</span>
-              <h2>{draft.job.orderNumber || "CO-01"}</h2>
-              <p>{draft.job.customer || "New project"}</p>
-              <small>{draft.job.jobNumber || "Job details to follow"}</small>
-            </div>
-            <nav aria-label="Change order steps">
-              {STEPS.map((step, i) => (
-                <button
-                  key={step}
-                  className={`step-button ${draft.step === i ? "active" : ""}`}
-                  aria-current={draft.step === i ? "step" : undefined}
-                  disabled={!!busy}
-                  onClick={() => go(i)}
-                >
-                  <span>{draft.step > i ? <Check size={15} /> : i + 1}</span>
-                  <div>
-                    {step}
-                    <small>
-                      {
-                        [
-                          "Bring in the original scope",
-                          "Add, revise, or remove work",
-                          "Review the project information",
-                          "Prepare the paperwork",
-                        ][i]
-                      }
-                    </small>
-                  </div>
-                </button>
-              ))}
-            </nav>
-            <div className="rail-total">
-              <small>NET CHANGE</small>
-              <strong className={net !== null && net < 0 ? "credit" : "accent"}>
-                {net === null ? "—" : signedMoney(net)}
-              </strong>
-              <span>
-                {draft.changes.length} changed{" "}
-                {draft.changes.length === 1 ? "item" : "items"}
-              </span>
-            </div>
-            <div className={`save-label ${saveStatus}`}>
-              <Save size={14} />
-              {saveStatus === "saving"
-                ? "Saving draft…"
-                : saveStatus === "error"
-                  ? "Draft needs saving"
-                  : "All changes saved"}
-            </div>
-          </aside>
-          <main className="workspace-main">
-            <div className="page-heading">
-              <div className="eyebrow">
-                STEP {String(draft.step + 1).padStart(2, "0")} OF 04
-              </div>
-              <h1>
-                {
-                  [
-                    "Start with the estimate.",
-                    "What’s changing?",
-                    "Make it official.",
-                    "Your paperwork, ready.",
-                  ][draft.step]
-                }
-              </h1>
-              <p>
-                {
-                  [
-                    "Upload the original scope, then review the items you’ll use.",
-                    "Select original items or add new work. We’ll calculate the difference.",
-                    "Confirm the project details and describe the change in your own words.",
-                    "Review the form and itemized attachment before downloading.",
-                  ][draft.step]
-                }
-              </p>
-            </div>
-            {error ? (
-              <div className="notice danger" role="alert">
-                <CircleAlert size={18} />
-                <span>{error}</span>
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss error"
-                  onClick={() => setError("")}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : null}
-            {draft.step === 0 ? (
-              <>
-                <input
-                  ref={fileInput}
-                  className="visually-hidden"
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  aria-label="Upload estimate PDF"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) void upload(e.target.files[0]);
-                    e.target.value = "";
-                  }}
-                />
-                <div
-                  className={`upload-zone ${busy ? "processing" : ""}`}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (e.dataTransfer.files[0])
-                      void upload(e.dataTransfer.files[0]);
-                  }}
-                >
-                  <div className="upload-icon">
-                    {busy ? (
-                      <div className="spinner" />
-                    ) : (
-                      <UploadCloud size={30} />
-                    )}
-                  </div>
-                  <h3>
-                    {busy ||
-                      (draft.source
-                        ? "Your estimate is attached."
-                        : "Drop your estimate here.")}
-                  </h3>
-                  <p>
-                    {draft.source
-                      ? draft.source.name
-                      : "Xactimate Final Draft PDF · Selectable text · Up to 40 MB"}
-                  </p>
-                  <button
-                    className="button"
-                    disabled={!!busy}
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    <UploadCloud size={16} />
-                    {draft.source ? "Replace estimate" : "Choose PDF"}
-                  </button>
-                  {!draft.source ? (
-                    <button
-                      className="text-button"
-                      disabled={!!busy}
-                      onClick={() => go(1)}
-                    >
-                      Enter changes manually <ArrowRight size={14} />
-                    </button>
-                  ) : null}
-                </div>
-                {draft.extractionWarnings.map((w) => (
-                  <div key={w} className="notice warning">
-                    <CircleAlert size={18} />
-                    <span>{w}</span>
-                  </div>
-                ))}
-                {draft.estimate.length || draft.source ? (
-                  <div
-                    className={`estimate-layout ${draft.source ? "with-source" : ""}`}
-                  >
-                    <section className="panel">
-                      <div className="panel-heading">
-                        <div>
-                          <h2>
-                            Original estimate{" "}
-                            <span className="count">
-                              {draft.estimate.length}
-                            </span>
-                          </h2>
-                          <p>
-                            Correct extracted values, then mark each affected
-                            item reviewed.
-                          </p>
-                        </div>
-                        <button className="button small" onClick={addBaseline}>
-                          <Plus size={15} />
-                          Item
-                        </button>
-                      </div>
-                      <label className="search full">
-                        <Search size={17} />
-                        <input
-                          aria-label="Search estimate"
-                          placeholder="Search room, line, or description…"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                        />
-                      </label>
-                      {originalTable}
-                      <div className="baseline-list">
-                        {filtered.map((row) => (
-                          <div
-                            className={`baseline-row ${editItem === row.id ? "expanded" : ""}`}
-                            key={row.id}
-                          >
-                            <button
-                              className="baseline-toggle"
-                              onClick={() => {
-                                setEditItem(
-                                  editItem === row.id ? null : row.id,
-                                );
-                                if (row.page) setSourcePage(row.page);
-                              }}
-                            >
-                              <div className="line-number">
-                                {row.lineNumber || "+"}
-                              </div>
-                              <div>
-                                <small>
-                                  {row.room || "Unassigned room"}
-                                  {row.page
-                                    ? ` · Page ${row.page}`
-                                    : " · Manual item"}
-                                </small>
-                                <strong>
-                                  {row.description || "Describe this item"}
-                                </strong>
-                              </div>
-                              <span
-                                className={`review-dot ${row.reviewed ? "reviewed" : ""}`}
-                                title={
-                                  row.reviewed ? "Reviewed" : "Needs review"
-                                }
-                              >
-                                {row.reviewed ? (
-                                  <Check size={14} />
-                                ) : (
-                                  <Pencil size={13} />
-                                )}
-                              </span>
-                            </button>
-                            {editItem === row.id ? (
-                              <div className="baseline-editor">
-                                <div className="fields two">
-                                  <Field
-                                    label="Room"
-                                    value={row.room}
-                                    onChange={(v) =>
-                                      baselineChange(row.id, "room", v)
-                                    }
-                                  />
-                                  <Field
-                                    label="Line number"
-                                    value={row.lineNumber}
-                                    onChange={(v) =>
-                                      baselineChange(row.id, "lineNumber", v)
-                                    }
-                                  />
-                                </div>
-                                <Field
-                                  label="Original description"
-                                  value={row.description}
-                                  onChange={(v) =>
-                                    baselineChange(row.id, "description", v)
-                                  }
-                                  required
-                                />
-                                <div className="fields two">
-                                  <Field
-                                    label="Unit"
-                                    value={row.unit}
-                                    onChange={(v) =>
-                                      baselineChange(row.id, "unit", v)
-                                    }
-                                    required
-                                  />
-                                  {numericFields.map(([key, label]) => (
-                                    <Field
-                                      key={key}
-                                      label={label}
-                                      value={row[key]}
-                                      onChange={(v) =>
-                                        baselineChange(row.id, key, v)
-                                      }
-                                      required
-                                    />
-                                  ))}
-                                </div>
-                                {row.priceComponents ? (
-                                  <p className="credit">
-                                    The extracted unit price combines reset (
-                                    {row.priceComponents.reset || "0"}), removal
-                                    ({row.priceComponents.remove || "0"}), and
-                                    replacement (
-                                    {row.priceComponents.replace || "0"}) prices
-                                    from the estimate.
-                                  </p>
-                                ) : null}
-                                {row.warnings.length ? (
-                                  <div className="inline-warning">
-                                    {row.warnings.join(" ")}
-                                  </div>
-                                ) : null}
-                                <label className="check-label">
-                                  <input
-                                    type="checkbox"
-                                    checked={row.reviewed}
-                                    disabled={baselineProblems(row).length > 0}
-                                    onChange={(e) =>
-                                      baselineChange(
-                                        row.id,
-                                        "reviewed",
-                                        e.target.checked,
-                                      )
-                                    }
-                                  />
-                                  I verified these original values against the
-                                  estimate.
-                                </label>
-                                {baselineProblems(row).length ? (
-                                  <small className="credit">
-                                    Complete the original description, unit, and
-                                    all pricing fields to confirm.
-                                  </small>
-                                ) : null}
-                                <details>
-                                  <summary>Extracted source text</summary>
-                                  <pre>
-                                    {row.rawText || "Manually entered item"}
-                                  </pre>
-                                </details>
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        className="button full"
-                        onClick={() =>
-                          update((d) => {
-                            const estimate = d.estimate.map((row) => ({
-                              ...row,
-                              reviewed: baselineProblems(row).length === 0,
-                            }));
-                            return {
-                              ...d,
-                              estimate,
-                              changes: d.changes.map((change) =>
-                                change.original
-                                  ? {
-                                      ...change,
-                                      original: structuredClone(
-                                        estimate.find(
-                                          (row) =>
-                                            row.id === change.original!.id,
-                                        )!,
-                                      ),
-                                      pricingConfirmed: false,
-                                    }
-                                  : change,
-                              ),
-                            };
-                          })
-                        }
-                      >
-                        <CheckCheck size={16} />
-                        Confirm all complete original items
-                      </button>
-                    </section>
-                    {draft.source ? (
-                      <aside className="source-panel">
-                        <SourcePanel
-                          key={draft.source.driveFileId ?? draft.source.name}
-                          source={draft.source}
-                          page={sourcePage}
-                        />
-                      </aside>
-                    ) : null}
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-            {draft.step === 1 ? (
-              <>
-                <div className="changes-layout">
-                  <section>
-                    <div className="section-heading">
-                      <div>
-                        <h2>
-                          Changed items{" "}
-                          <span className="count">{draft.changes.length}</span>
-                        </h2>
-                        <p>
-                          Amounts show the difference from the original
-                          estimate.
-                        </p>
-                      </div>
-                      <button
-                        className="button primary"
-                        onClick={() =>
-                          update((d) => ({
-                            ...d,
-                            changes: [...d.changes, createChange(null)],
-                          }))
-                        }
-                      >
-                        <Plus size={17} />
-                        Add new work
-                      </button>
-                    </div>
-                    {!draft.changes.length ? (
-                      <div className="empty-state compact">
-                        <Pencil size={28} />
-                        <h3>Every change starts with an item.</h3>
-                        <p>
-                          Select an item from your estimate,
-                          <br />
-                          or add work that wasn’t in the original scope.
-                        </p>
-                      </div>
-                    ) : null}
-                    {draft.changes.map((row, i) => (
-                      <article className="change-card" key={row.id}>
-                        <div className="change-heading">
-                          <span className={`action-badge ${row.action}`}>
-                            {row.action === "remove" ? (
-                              <Minus size={13} />
-                            ) : row.action === "add" ? (
-                              <Plus size={13} />
-                            ) : (
-                              <Pencil size={12} />
-                            )}
-                            {row.action === "remove"
-                              ? "Credit / remove"
-                              : row.action === "add"
-                                ? "New work"
-                                : "Revision"}
-                          </span>
-                          <Amount item={row} />
-                          <button
-                            className="icon-button"
-                            aria-label={`Discard changed item ${i + 1}`}
-                            onClick={() =>
-                              update((d) => ({
-                                ...d,
-                                changes: d.changes.filter(
-                                  (item) => item.id !== row.id,
-                                ),
-                              }))
-                            }
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                        {row.original ? (
-                          <>
-                            <div className="original-reference">
-                              <span>
-                                ORIGINAL · {row.original.room || "Unassigned"} ·
-                                Line {row.original.lineNumber || "—"}
-                                {row.original.page
-                                  ? ` · Page ${row.original.page}`
-                                  : ""}
-                              </span>
-                              <p>{row.original.description}</p>
-                              <small>
-                                {row.original.quantity} {row.original.unit} × $
-                                {row.original.rate} · Tax $
-                                {row.original.tax || "—"} · O&P $
-                                {row.original.op || "—"} · RCV $
-                                {row.original.rcv || "—"}
-                              </small>
-                              {!row.original.reviewed ? (
-                                <button
-                                  className="text-button credit"
-                                  onClick={() => {
-                                    setEditItem(row.original!.id);
-                                    setSourcePage(row.original!.page || 1);
-                                    go(0);
-                                  }}
-                                >
-                                  Review original values{" "}
-                                  <ArrowRight size={14} />
-                                </button>
-                              ) : null}
-                            </div>
-                            <div className="segmented slim">
-                              <button
-                                aria-pressed={row.action === "revise"}
-                                onClick={() =>
-                                  changeChange(row.id, "action", "revise")
-                                }
-                              >
-                                Revise item
-                              </button>
-                              <button
-                                aria-pressed={row.action === "remove"}
-                                onClick={() =>
-                                  changeChange(row.id, "action", "remove")
-                                }
-                              >
-                                Remove / credit
-                              </button>
-                            </div>
-                          </>
-                        ) : null}
-                        <div className="fields two">
-                          <Field
-                            label="Room / area"
-                            value={row.room}
-                            onChange={(v) => changeChange(row.id, "room", v)}
-                          />
-                          <Field
-                            label="Description"
-                            value={row.description}
-                            onChange={(v) =>
-                              changeChange(row.id, "description", v)
-                            }
-                            required
-                          />
-                        </div>
-                        {row.action !== "remove" ? (
-                          <>
-                            <div className="fields four">
-                              <Field
-                                label="Revised quantity"
-                                value={row.quantity}
-                                onChange={(v) =>
-                                  changeChange(row.id, "quantity", v)
-                                }
-                                required
-                              />
-                              <Field
-                                label="Unit"
-                                value={row.unit}
-                                onChange={(v) =>
-                                  changeChange(row.id, "unit", v)
-                                }
-                                required
-                              />
-                              <Field
-                                label="Unit price ($)"
-                                value={row.rate}
-                                onChange={(v) =>
-                                  changeChange(row.id, "rate", v)
-                                }
-                                required
-                              />
-                              <div className="calculated-field">
-                                <span>Revised item total</span>
-                                <strong>
-                                  {(() => {
-                                    try {
-                                      return money(
-                                        calculateChange(row).revised,
-                                      );
-                                    } catch {
-                                      return "—";
-                                    }
-                                  })()}
-                                </strong>
-                              </div>
-                            </div>
-                            <div className="tax-review">
-                              <div>
-                                <strong>Tax & overhead/profit</strong>
-                                <p>
-                                  Enter revised dollar amounts. Rates are not
-                                  inferred.
-                                </p>
-                              </div>
-                              <div className="fields two">
-                                <Field
-                                  label="Revised tax ($)"
-                                  value={row.tax}
-                                  onChange={(v) =>
-                                    changeChange(row.id, "tax", v)
-                                  }
-                                  required
-                                />
-                                <Field
-                                  label="Revised O&P ($)"
-                                  value={row.op}
-                                  onChange={(v) =>
-                                    changeChange(row.id, "op", v)
-                                  }
-                                  required
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="notice neutral">
-                            This item’s full original RCV, including its tax and
-                            O&P, will be credited.
-                          </div>
-                        )}
-                        <label className="field">
-                          <span>
-                            Reason for this change <b>*</b>
-                          </span>
-                          <textarea
-                            rows={2}
-                            placeholder="What changed, and why?"
-                            value={row.reason}
-                            onChange={(e) =>
-                              changeChange(row.id, "reason", e.target.value)
-                            }
-                          />
-                        </label>
-                        <label className="check-label">
-                          <input
-                            type="checkbox"
-                            checked={row.pricingConfirmed}
-                            onChange={(e) =>
-                              changeChange(
-                                row.id,
-                                "pricingConfirmed",
-                                e.target.checked,
-                              )
-                            }
-                          />
-                          I confirm{" "}
-                          {row.action === "remove"
-                            ? "the full credit and original tax/O&P."
-                            : "the revised pricing, tax, and O&P amounts."}
-                        </label>
-                      </article>
-                    ))}
-                  </section>
-                  <aside
-                    className={`select-items panel ${!draft.estimate.length ? "no-items" : ""}`}
-                  >
-                    <div className="panel-heading">
-                      <div>
-                        <h2>From the estimate</h2>
-                        <p>Select the work that’s changing.</p>
-                      </div>
-                    </div>
-                    <label className="search full">
-                      <Search size={16} />
-                      <input
-                        aria-label="Search items to change"
-                        placeholder="Room, item, or line number…"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                      />
-                    </label>
-                    {!draft.estimate.length ? (
-                      <div className="empty compact">
-                        <FileText size={26} />
-                        <p>No estimate items yet.</p>
-                        <button className="text-button" onClick={() => go(0)}>
-                          Upload or enter original items{" "}
-                          <ArrowRight size={13} />
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="select-list">
-                      {filtered.map((row) => (
-                        <div className="select-item" key={row.id}>
-                          <small>
-                            {row.room || "Unassigned"} · #
-                            {row.lineNumber || "—"}
-                            {row.reviewed ? "" : " · Review needed"}
-                          </small>
-                          <strong>{row.description || "Untitled item"}</strong>
-                          <div>
-                            <span>
-                              {row.quantity || "—"} {row.unit} · $
-                              {row.rcv || "—"}
-                            </span>
-                            {draft.changes.some(
-                              (c) => c.original?.id === row.id,
-                            ) ? (
-                              <span className="selected-label">
-                                <Check size={12} />
-                                Selected
-                              </span>
-                            ) : (
-                              <div className="button-row">
-                                <button
-                                  className="button small"
-                                  onClick={() => choose(row, "revise")}
-                                >
-                                  Revise
-                                </button>
-                                <button
-                                  className="button small"
-                                  onClick={() => choose(row, "remove")}
-                                >
-                                  Credit
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </aside>
-                </div>
-              </>
-            ) : null}
-            {draft.step === 2 ? (
-              <>
-                <section className="panel details-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Project & customer</h2>
-                      <p>These details appear on your change-order form.</p>
-                    </div>
-                    <span className="badge">{draft.job.orderNumber}</span>
-                  </div>
-                  <div className="fields two">
-                    <Field
-                      label="Customer / project owner"
-                      required
-                      value={draft.job.customer}
-                      onChange={(v) => jobChange("customer", v)}
-                    />
-                    <Field
-                      label="Job number"
-                      required
-                      value={draft.job.jobNumber}
-                      onChange={(v) => jobChange("jobNumber", v)}
-                    />
-                    <Field
-                      label="Property address"
-                      required
-                      value={draft.job.address}
-                      onChange={(v) => jobChange("address", v)}
-                    />
-                    <Field
-                      label="Project manager"
-                      required
-                      value={draft.job.projectManager}
-                      onChange={(v) => jobChange("projectManager", v)}
-                    />
-                    <Field
-                      label="Change-order number"
-                      required
-                      value={draft.job.orderNumber}
-                      onChange={(v) => jobChange("orderNumber", v)}
-                    />
-                    <Field
-                      label="Change-order date"
-                      type="date"
-                      required
-                      value={draft.job.date}
-                      onChange={(v) => jobChange("date", v)}
-                    />
-                  </div>
-                  <div className="subsection">
-                    <h3>Insurance classification</h3>
-                    <div className="segmented">
-                      <button
-                        aria-pressed={draft.job.insuranceRelated}
-                        onClick={() => jobChange("insuranceRelated", true)}
-                      >
-                        Insurance related
-                      </button>
-                      <button
-                        aria-pressed={!draft.job.insuranceRelated}
-                        onClick={() => jobChange("insuranceRelated", false)}
-                      >
-                        Non-insurance
-                      </button>
-                    </div>
-                    {!draft.job.insuranceRelated ? (
-                      <p className="inline-warning">
-                        Non-insurance changes require 100% payment before work
-                        starts.
-                      </p>
-                    ) : null}
-                    <div className="fields two">
-                      <Field
-                        label="Insurance carrier"
-                        required={draft.job.insuranceRelated}
-                        value={draft.job.carrier}
-                        onChange={(v) => jobChange("carrier", v)}
-                      />
-                      <Field
-                        label="Claim number"
-                        required={draft.job.insuranceRelated}
-                        value={draft.job.claim}
-                        onChange={(v) => jobChange("claim", v)}
-                      />
-                    </div>
-                  </div>
-                </section>
-                <section className="panel details-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Contract & schedule</h2>
-                      <p>
-                        Confirm the signed contract amount; the estimate is a
-                        starting point.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="fields three">
-                    <Field
-                      label="Original contract ($)"
-                      required
-                      value={draft.job.originalContract}
-                      onChange={(v) => jobChange("originalContract", v)}
-                    />
-                    <Field
-                      label="Previous authorized changes ($)"
-                      required
-                      help="Use a negative amount for previous credits."
-                      value={draft.job.previousChanges}
-                      onChange={(v) => jobChange("previousChanges", v)}
-                    />
-                    <Field
-                      label="Added working days"
-                      required
-                      value={draft.job.addedDays}
-                      onChange={(v) => jobChange("addedDays", v)}
-                    />
-                  </div>
-                  <div className="contract-summary">
-                    <span>
-                      This change order{" "}
-                      <strong
-                        className={
-                          net !== null && net < 0 ? "credit" : "accent"
-                        }
-                      >
-                        {net === null ? "—" : signedMoney(net)}
-                      </strong>
-                    </span>
-                    <span>
-                      Revised contract{" "}
-                      <strong>
-                        {net !== null &&
-                        validDecimal(draft.job.originalContract) &&
-                        validDecimal(draft.job.previousChanges, true)
-                          ? money(
-                              (() => {
-                                return (
-                                  cents(draft.job.originalContract) +
-                                  cents(draft.job.previousChanges) +
-                                  net
-                                );
-                              })(),
-                            )
-                          : "—"}
-                      </strong>
-                    </span>
-                  </div>
-                  <label className="field">
-                    <span>
-                      Scope summary <b>*</b>
-                    </span>
-                    <textarea
-                      rows={5}
-                      value={scopeText(draft)}
-                      onChange={(e) =>
-                        update((d) => ({
-                          ...d,
-                          scope: e.target.value,
-                          scopeEdited: true,
-                        }))
-                      }
-                    />
-                    <small>
-                      The summary appears on the form. Longer text continues in
-                      Attachment A.
-                    </small>
-                  </label>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      update((d) => ({ ...d, scopeEdited: false, scope: "" }))
-                    }
-                  >
-                    Rebuild summary from changed items
-                  </button>
-                </section>
-                <section className="panel details-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Branch information</h2>
-                      <p>Confirm the contact details used on the document.</p>
-                    </div>
-                  </div>
-                  <div className="fields two">
-                    <Field
-                      label="Branch name"
-                      required
-                      value={draft.job.branchName}
-                      onChange={(v) => jobChange("branchName", v)}
-                    />
-                    <Field
-                      label="Branch contact / contractor"
-                      required
-                      value={draft.job.branchContact}
-                      onChange={(v) => jobChange("branchContact", v)}
-                    />
-                    <Field
-                      label="Branch address"
-                      required
-                      value={draft.job.branchAddress}
-                      onChange={(v) => jobChange("branchAddress", v)}
-                    />
-                    <Field
-                      label="Branch phone"
-                      required
-                      value={draft.job.branchPhone}
-                      onChange={(v) => jobChange("branchPhone", v)}
-                    />
-                  </div>
-                </section>
-              </>
-            ) : null}
-            {draft.step === 3 ? (
-              <Suspense
-                fallback={
-                  <div className="empty">Loading document generator…</div>
-                }
-              >
-                <Preview draft={draft} />
-              </Suspense>
-            ) : null}
-            <div className="step-footer">
-              <span className="muted">
-                {draft.step === 0
-                  ? "Review source values before using them."
-                  : draft.step === 1
-                    ? "Credits are negative. Additions are positive."
-                    : draft.step === 2
-                      ? "Required fields are marked with *."
-                      : "Prepared for owner and contractor signatures."}
-              </span>
-              <div className="button-row">
-                {draft.step > 0 ? (
-                  <button className="button" onClick={() => go(draft.step - 1)}>
-                    <ArrowLeft size={16} />
-                    Back
-                  </button>
-                ) : null}
-                {draft.step < 3 ? (
-                  <button
-                    className="button primary"
-                    disabled={!!busy}
-                    onClick={() => {
-                      if (draft.step === 2) {
-                        const errors = validationErrors(draft);
-                        if (errors.length) {
-                          setError(errors.join(" "));
-                          return;
-                        }
-                      }
-                      go(draft.step + 1);
-                    }}
-                  >
-                    Continue <ArrowRight size={17} />
-                  </button>
-                ) : (
-                  <button className="button" onClick={() => void backHome()}>
-                    <FolderOpen size={16} />
-                    Back to drafts
-                  </button>
-                )}
-              </div>
-            </div>
-          </main>
-        </div>
       )}
+      <AttachmentPreview preview={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

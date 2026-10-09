@@ -1,0 +1,258 @@
+.shell-home {
+  max-width: 1000px;
+}
+.shell-request {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 26px 30px 60px;
+}
+.shell-request .estimator-workspace {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Request queue rows */
+.request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.request-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 14px 18px;
+  text-align: left;
+  color: inherit;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.request-row:hover {
+  border-color: #c3c9d2;
+  box-shadow: 0 2px 8px #0f1a2a0d;
+}
+.request-status {
+  flex-shrink: 0;
+  min-width: 82px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 9px;
+  border-radius: 30px;
+  border: 1px solid #e2e6eb;
+  background: #f7f8fa;
+  color: #65707e;
+}
+.request-status.status-submitted {
+  border-color: #f3dfb0;
+  background: #fff7e6;
+  color: #9a6b1f;
+}
+.request-status.status-in_review {
+  border-color: #c9dcf3;
+  background: #eef5fd;
+  color: #2563a5;
+}
+.request-status.status-needs_information {
+  border-color: #f1c9c9;
+  background: #fdeeee;
+  color: #b03232;
+}
+.request-status.status-ready {
+  border-color: #bfdfc9;
+  background: #ecf8ef;
+  color: #1f7a3d;
+}
+.request-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.request-row-main strong {
+  font-size: 14px;
+  color: #303b49;
+}
+.request-row-main small,
+.request-row-meta small {
+  font-size: 11px;
+  color: #8b94a1;
+}
+.request-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #9aa3af;
+}
+.request-row-meta small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.shell-empty-filter {
+  text-align: center;
+  color: #8b94a1;
+  font-size: 12px;
+  padding: 18px 0;
+}
+
+/* Legacy section */
+.shell-legacy {
+  padding-bottom: 8px;
+}
+.shell-legacy-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.shell-legacy-bar .search {
+  margin-left: auto;
+  min-width: 230px;
+}
+.legacy-row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.legacy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 13px 16px;
+}
+.legacy-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.legacy-row-main strong {
+  font-size: 14px;
+  color: #303b49;
+}
+.legacy-row-main small {
+  font-size: 11px;
+  color: #8b94a1;
+}
+
+/* Claim screen */
+.shell-claim {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 30px 20px 60px;
+}
+.shell-claim-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 34px;
+  text-align: center;
+  margin-top: 18px;
+}
+.shell-claim-card .empty-icon {
+  margin: 0 auto 18px;
+}
+.shell-claim-card h2 {
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+.shell-claim-card p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+.shell-claim-field {
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+/* Attachment preview modal */
+.shell-modal {
+  position: fixed;
+  inset: 0;
+  background: #101826b3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 28px;
+}
+.shell-modal-box {
+  background: #fff;
+  border-radius: 12px;
+  width: min(920px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shell-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.shell-modal-head strong {
+  font-size: 13px;
+  color: #394353;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #f2f4f7;
+  padding: 14px;
+}
+.shell-modal-body img {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+/* Legacy editor conversion button */
+.legacy-convert {
+  margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+  .shell-request {
+    padding: 18px 16px 48px;
+  }
+  .request-row {
+    flex-wrap: wrap;
+  }
+  .request-row-meta {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 98px;
+  }
+  .shell-legacy-bar .search {
+    margin-left: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  .legacy-row {
+    flex-wrap: wrap;
+  }
+  .legacy-row .button {
+    flex: 1;
+  }
+}

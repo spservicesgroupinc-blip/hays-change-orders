@@ -14,14 +14,16 @@ Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist
 
 ## Use
 
-1. Create a change order and upload a selectable-text Xactimate Final Draft PDF (up to 40 MB). Review extracted rooms and original item values alongside the source. Missing values stay blank; enter applicable tax/O&P dollars, including zero where appropriate. Mark the original items reviewed.
-2. Revise or credit original items, or add new work. Enter revised quantity/rate, tax and overhead/profit dollar amounts, and a reason. Confirm pricing on each item.
-3. Confirm the customer, job, branch, insurance, signed original contract amount, previous authorized changes, and working days. Edit the generated scope summary if needed.
-4. Preview/print/download the packet, form, or Attachment A. Signature spaces are included for owner and contractor.
+1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. Drafts autosave as you type.
+2. **Estimators** claim requests from the shared queue, review the PM's scope and quoted subcontractor costs, then price each work area — either as a final all-in customer price (tax and O&P included) or as retained quantity/rate line items. Replace several original items with a quoted lump sum, or enter a manual credit.
+3. Estimators confirm the contract amounts, previous authorized changes, insurance details, change-order number/date, and added working days, then mark the request ready.
+4. Completed requests become read-only; preview, print, or download the Hays cover, Attachment A, and combined packet. Subcontractor costs, quote PDFs, vendor details, and internal notes never appear in customer documents.
 
-Printed RCV remains the original baseline. A revision adds the change in rounded quantity × unit price and the changes in PM-reviewed tax/O&P dollars to that baseline. A removal credits full original RCV. Money uses decimal-string arithmetic with integer cents and half-away-from-zero rounding. Depreciation, ACV, and recap amounts do not become line items.
+Legacy change orders from the previous four-step editor remain in a separate section: open them to finish, or convert one into a shared request (its PDFs are copied and prior pricing carried forward for estimator review).
 
-Drafts sync automatically to a shared Google Sheet, and uploaded source PDFs are stored in a Google Drive folder, so project managers see the same drafts across devices. Each save sends the draft to the Apps Script backend (the PDF stays in Drive), and a stale tab cannot overwrite a newer revision. Storage failures are shown and prevent leaving an unsaved draft through the app. Keep downloaded copies of completed documents.
+Printed RCV remains the original baseline. A revision adds the change in rounded quantity × unit price and the changes in estimator-reviewed tax/O&P dollars to that baseline. A removal credits full original RCV. Money uses decimal-string arithmetic with integer cents and half-away-from-zero rounding. Depreciation, ACV, and recap amounts do not become line items.
+
+Drafts and requests sync automatically to Google Sheets, and uploaded PDFs are stored in Google Drive, so the team sees the same queue across devices. Each save carries an expected revision and retry identifier, so a stale tab cannot overwrite a newer edit. Storage failures are shown and prevent leaving unsaved work through the app. Keep downloaded copies of completed documents.
 
 The parser supports positioned Final Draft tables, wrapped descriptions, repeated headers, and explicit RCV columns. It also reads right-aligned RESET / REMOVE / REPLACE / TAX / O&P / TOTAL reports, combining the printed per-unit prices into the editable unit price while keeping the printed TOTAL as the original RCV. Source price components stay available during review. Existing negative credit lines are preserved and can be revised or removed. Room sketches, trade headings, page footers, recap totals, depreciation, and ACV do not become priced work. PDFs vary; review extracted fields against the source before generation. Scanned PDFs and unsupported reports use manual entry. The app does not infer pricing-list rates, tax applicability, or O&P rules. A later change order must use the appropriate current estimate baseline; previously exported packets do not automatically update the baseline or previous authorized changes.
 

@@ -10,6 +10,42 @@ async function installMockApi(page: Page) {
     string,
     { name: string; data: string; mimeType: string }
   >();
+  const requests = new Map<string, any>();
+  const mutations = new Map<string, string>();
+  const requestFiles = new Map<
+    string,
+    { name: string; data: string; mimeType: string }
+  >();
+  const summarize = (r: any) => ({
+    id: r.id,
+    revision: r.revision,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    status: r.status,
+    estimatorName: r.estimatorName,
+    changesCount: r.requestedChanges.length,
+    attachmentsCount: r.attachments.length,
+    job: {
+      customer: r.job.customer,
+      jobNumber: r.job.jobNumber,
+      projectManager: r.job.projectManager,
+      orderNumber: r.job.orderNumber,
+      address: r.job.address,
+    },
+  });
+  const commit = (request: any, mutationId: string) => {
+    const previous = requests.get(request.id);
+    const revision = previous ? previous.revision + 1 : 1;
+    const next = {
+      ...request,
+      revision,
+      createdAt: previous ? previous.createdAt : request.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    requests.set(request.id, next);
+    mutations.set(mutationId, request.id);
+    return next;
+  };
   await page.route(apiRoute, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -96,6 +132,151 @@ async function installMockApi(page: Page) {
             data: pdf.data,
           })
         : respond({ ok: false, error: "Source PDF not found." });
+    }
+    if (action === "listRequests") {
+      const rows = [...requests.values()]
+        .map(summarize)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      return respond({ ok: true, requests: rows });
+    }
+    if (action === "openRequest") {
+      const request = requests.get(params.get("id") ?? "");
+      return request
+        ? respond({ ok: true, request })
+        : respond({ ok: false, error: "Request not found." });
+    }
+    if (action === "saveRequest") {
+      const request = body.request as any;
+      const mutationId = String(body.mutationId);
+      if (mutations.has(mutationId)) {
+        const id = mutations.get(mutationId)!;
+        return respond({ ok: true, request: requests.get(id) });
+      }
+      const previous = requests.get(request.id);
+      if (previous && previous.revision !== body.expectedRevision)
+        return respond({
+          ok: false,
+          error: "This request changed in another window.",
+          code: "CONFLICT",
+          currentRevision: previous.revision,
+        });
+      return respond({ ok: true, request: commit(request, mutationId) });
+    }
+    if (action === "claimRequest") {
+      const request = requests.get(String(body.id));
+      if (!request)
+        return respond({ ok: false, error: "Request not found.", code: "NOT_FOUND" });
+      const claimed = {
+        ...request,
+        estimatorName: String(body.estimatorName),
+        status: "in_review",
+      };
+      return respond({ ok: true, request: commit(claimed, String(body.mutationId)) });
+    }
+    if (action === "transitionRequest") {
+      const request = requests.get(String(body.id));
+      if (!request)
+        return respond({ ok: false, error: "Request not found.", code: "NOT_FOUND" });
+      const target = String(body.status);
+      let next: any;
+      if (target === "submitted")
+        next = {
+          ...request,
+          status: request.estimatorName ? "in_review" : "submitted",
+          submittedAt: new Date().toISOString(),
+          informationQuestion: "",
+        };
+      else if (target === "needs_information")
+        next = {
+          ...request,
+          status: "needs_information",
+          informationQuestion: String(body.question),
+        };
+      else if (target === "ready") next = { ...request, status: "ready" };
+      else
+        return respond({ ok: false, error: "That status change is not permitted." });
+      return respond({ ok: true, request: commit(next, String(body.mutationId)) });
+    }
+    if (action === "uploadAttachment") {
+      const file = body.file as any;
+      const key = `${String(body.requestId)}:${String(body.attachmentId)}`;
+      requestFiles.set(key, {
+        name: String(file.name),
+        mimeType: String(file.mimeType),
+        data: String(file.data),
+      });
+      return respond({
+        ok: true,
+        attachment: {
+          id: String(body.attachmentId),
+          kind: file.kind,
+          name: String(file.name),
+          mimeType: String(file.mimeType),
+          size: Number(file.size),
+          driveFileId: key,
+        },
+      });
+    }
+    if (action === "fetchAttachment") {
+      const key = `${params.get("requestId")}:${params.get("attachmentId")}`;
+      const file = requestFiles.get(key);
+      return file
+        ? respond({ ok: true, ...file })
+        : respond({ ok: false, error: "Attachment not found." });
+    }
+    if (action === "convertLegacyRequest") {
+      const legacy = drafts.get(String(body.id));
+      if (!legacy)
+        return respond({ ok: false, error: "Legacy draft not found." });
+      const converted = {
+        schemaVersion: 2,
+        id: `req-${Math.random().toString(36).slice(2)}`,
+        revision: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: "draft",
+        estimatorName: "",
+        submittedAt: null,
+        informationQuestion: "",
+        job: legacy.job,
+        requestedChanges: legacy.changes.map((item: any) => ({
+          id: `ch-${Math.random().toString(36).slice(2)}`,
+          room: item.room,
+          action: item.action,
+          description: item.description,
+          reason: item.reason,
+          measurements: "",
+          materials: "",
+          scheduleImpact: "",
+          estimateItemIds: item.original ? [item.original.id] : [],
+        })),
+        quotes: [],
+        attachments: [],
+        estimate: legacy.estimate,
+        estimateAttachmentId: null,
+        extractionWarnings: legacy.extractionWarnings || [],
+        pricedItems: legacy.changes.map((item: any, index: number) => ({
+          ...item,
+          requestChangeId: "",
+          pricingConfirmed: false,
+        })),
+        exclusions: {},
+        customerScope: legacy.scope || "",
+        customerScopeEdited: legacy.scopeEdited,
+        customerScopeConfirmed: false,
+        contractConfirmed: false,
+        legacyDraftId: legacy.id,
+      };
+      converted.pricedItems = converted.pricedItems.map(
+        (item: any, index: number) => ({
+          ...item,
+          requestChangeId: converted.requestedChanges[index].id,
+        }),
+      );
+      return respond({
+        ok: true,
+        request: commit(converted, String(body.mutationId)),
+      });
     }
     return respond({ ok: false, error: "Unknown action." });
   });
@@ -335,4 +516,93 @@ test("remote storage failures stay visible and keep the unsaved workspace open",
   await expect(
     page.getByRole("heading", { name: "Start with the estimate." }),
   ).toBeVisible();
+});
+test("PM submits a text-only request and an estimator prices it to a ready packet", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Tell estimating what changed." }),
+  ).toBeVisible();
+  await page.getByLabel("Job number", { exact: true }).fill("FW-REQ-001");
+  await page
+    .getByLabel("Customer / project owner", { exact: true })
+    .fill("New Request Customer");
+  await page
+    .getByLabel("Property address", { exact: true })
+    .fill("500 Example Ave, Fort Wayne, IN");
+  await page.getByLabel("Project manager", { exact: true }).fill("New Request PM");
+  await page
+    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .click();
+  await page
+    .getByLabel("Room / work area", { exact: true })
+    .fill("Kitchen");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Replace the damaged lower cabinets.");
+  await page
+    .getByRole("textbox", { name: "Why is this change needed?" })
+    .fill("Water damage found after demo.");
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Claim this request", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "All requests", exact: true }).click();
+  await expect(page.locator(".request-row")).toHaveCount(1);
+  await expect(page.locator(".request-row")).toContainText("In queue");
+  await page.locator(".request-row").click();
+  await page.getByLabel("Estimator name", { exact: true }).fill("QA Estimator");
+  await page
+    .getByRole("button", { name: "Claim this request", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Turn the field request into a customer change order.",
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Add customer priced item", exact: true })
+    .click();
+  await page
+    .getByLabel("Final customer price (includes tax and O&P)", { exact: true })
+    .fill("1200.00");
+  await page
+    .getByLabel("Customer-facing description", { exact: true })
+    .fill("Install replacement lower cabinets");
+  await page
+    .getByLabel("Customer-facing reason", { exact: true })
+    .fill("Water-damaged cabinets");
+  await page
+    .getByLabel("I approve this customer description, reason, and final pricing")
+    .check();
+  await page
+    .getByLabel("I reviewed and approved the customer scope wording")
+    .check();
+  await page
+    .getByLabel("Original contract amount", { exact: true })
+    .fill("45000.00");
+  await page
+    .getByLabel("Contractor contact", { exact: true })
+    .fill("QA Contractor");
+  await page
+    .getByLabel("Insurance carrier", { exact: true })
+    .fill("QA Carrier");
+  await page.getByLabel("Claim number", { exact: true }).fill("QA-CLAIM-1");
+  await page
+    .getByLabel("I verified the contract amounts and customer document details")
+    .check();
+  await page
+    .getByRole("button", { name: "Mark ready for customer", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Download packet", exact: true }),
+  ).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(".summary-grid")).toContainText("$46,200.00");
+  expect(runtimeErrors).toEqual([]);
 });
