@@ -67,10 +67,15 @@ export default function InstallApp() {
       <div className="install-banner" role="region" aria-label="Install app">
         <div className="install-banner-text">
           <strong>Install Change Orders</strong>
-          <span>Add it to your home screen for a full-screen, offline-ready app.</span>
+          <span>
+            Add it to your home screen for a full-screen, offline-ready app.
+          </span>
         </div>
         <div className="install-banner-actions">
-          <button className="button primary small" onClick={() => void install()}>
+          <button
+            className="button primary small"
+            onClick={() => void install()}
+          >
             <Download size={16} />
             Install
           </button>
@@ -88,12 +93,14 @@ export default function InstallApp() {
 
   if (showIOS) {
     return (
-      <div className="install-banner" role="region" aria-label="Add to home screen">
+      <div
+        className="install-banner"
+        role="region"
+        aria-label="Add to home screen"
+      >
         <div className="install-banner-text">
           <strong>Add Change Orders to your home screen</strong>
-          <span>
-            Tap the Share button, then choose “Add to Home Screen”.
-          </span>
+          <span>Tap the Share button, then choose “Add to Home Screen”.</span>
         </div>
         <div className="install-banner-actions">
           <span className="install-share-hint">

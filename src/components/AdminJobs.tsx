@@ -126,8 +126,8 @@ export default function AdminJobs({
           <div>
             <h2>Import a job report</h2>
             <p>
-              Choose the CSV export or paste its contents. Importing replaces the
-              current list, so upload the latest full report.
+              Choose the CSV export or paste its contents. Importing replaces
+              the current list, so upload the latest full report.
             </p>
           </div>
         </div>
@@ -179,8 +179,8 @@ export default function AdminJobs({
           <div className="pm-section-heading">
             <div>
               <h2>
-                {preview.total}{" "}
-                {preview.total === 1 ? "job" : "jobs"} ready to import
+                {preview.total} {preview.total === 1 ? "job" : "jobs"} ready to
+                import
               </h2>
               <p>
                 Importing replaces the current list

@@ -166,18 +166,29 @@ async function installMockApi(page: Page) {
     if (action === "claimRequest") {
       const request = requests.get(String(body.id));
       if (!request)
-        return respond({ ok: false, error: "Request not found.", code: "NOT_FOUND" });
+        return respond({
+          ok: false,
+          error: "Request not found.",
+          code: "NOT_FOUND",
+        });
       const claimed = {
         ...request,
         estimatorName: String(body.estimatorName),
         status: "in_review",
       };
-      return respond({ ok: true, request: commit(claimed, String(body.mutationId)) });
+      return respond({
+        ok: true,
+        request: commit(claimed, String(body.mutationId)),
+      });
     }
     if (action === "transitionRequest") {
       const request = requests.get(String(body.id));
       if (!request)
-        return respond({ ok: false, error: "Request not found.", code: "NOT_FOUND" });
+        return respond({
+          ok: false,
+          error: "Request not found.",
+          code: "NOT_FOUND",
+        });
       const target = String(body.status);
       let next: any;
       if (target === "submitted")
@@ -195,8 +206,14 @@ async function installMockApi(page: Page) {
         };
       else if (target === "ready") next = { ...request, status: "ready" };
       else
-        return respond({ ok: false, error: "That status change is not permitted." });
-      return respond({ ok: true, request: commit(next, String(body.mutationId)) });
+        return respond({
+          ok: false,
+          error: "That status change is not permitted.",
+        });
+      return respond({
+        ok: true,
+        request: commit(next, String(body.mutationId)),
+      });
     }
     if (action === "uploadAttachment") {
       const file = body.file as any;
@@ -544,13 +561,16 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
   await page
     .getByLabel("Property address", { exact: true })
     .fill("500 Example Ave, Fort Wayne, IN");
-  await page.getByLabel("Project manager", { exact: true }).fill("New Request PM");
   await page
-    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .getByLabel("Project manager", { exact: true })
+    .fill("New Request PM");
+  await page
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
     .click();
-  await page
-    .getByLabel("Room / work area", { exact: true })
-    .fill("Kitchen");
+  await page.getByLabel("Room / work area", { exact: true }).fill("Kitchen");
   await page
     .getByRole("textbox", { name: "What needs to change?" })
     .fill("Replace the damaged lower cabinets.");
@@ -589,7 +609,9 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
     .getByLabel("Customer-facing reason", { exact: true })
     .fill("Water-damaged cabinets");
   await page
-    .getByLabel("I approve this customer description, reason, and final pricing")
+    .getByLabel(
+      "I approve this customer description, reason, and final pricing",
+    )
     .check();
   await page
     .getByLabel("I reviewed and approved the customer scope wording")
@@ -630,7 +652,10 @@ test("a request sent back for information links the PM straight into the change 
     .fill("Info Customer");
   await page.getByLabel("Project manager", { exact: true }).fill("Info PM");
   await page
-    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
     .click();
   await page.getByLabel("Room / work area", { exact: true }).fill("Bathroom");
   await page
@@ -648,9 +673,9 @@ test("a request sent back for information links the PM straight into the change 
     .fill("Which vanity model is approved?");
   await page.getByRole("button", { name: "Request information" }).click();
   // The estimator stays in the estimator workspace instead of the PM form.
-  await expect(
-    page.locator(".notice.warning"),
-  ).toContainText("Waiting on the project manager.");
+  await expect(page.locator(".notice.warning")).toContainText(
+    "Waiting on the project manager.",
+  );
   await expect(page.locator(".notice.warning")).toContainText(
     "Which vanity model is approved?",
   );
@@ -690,9 +715,7 @@ test("one click copies a Dash note from the open request and the orders list", a
 }) => {
   const runtimeErrors: string[] = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
-  await page
-    .context()
-    .grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   await page.getByRole("button", { name: "New request", exact: true }).click();
   await page.getByLabel("Job number", { exact: true }).fill("FW-DASH-001");
@@ -704,14 +727,20 @@ test("one click copies a Dash note from the open request and the orders list", a
     .fill("12 Bathroom Way, Fort Wayne, IN");
   await page.getByLabel("Project manager", { exact: true }).fill("Dash PM");
   await page
-    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
     .click();
   await page.getByLabel("Room / work area", { exact: true }).fill("Bathroom");
   await page
     .getByRole("textbox", { name: "What needs to change?" })
     .fill("Install two exhaust fans (bathroom fans)");
   await page
-    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
     .click();
   await page
     .getByLabel("Room / work area", { exact: true })
@@ -739,8 +768,18 @@ test("one click copies a Dash note from the open request and the orders list", a
   expect(openNote).toContain("- Hallway — add: Repaint the hallway walls");
   expect(openNote).toContain("2 changes · Created");
   expect(openNote).toContain("Estimator: unassigned");
+  // Submitting publishes the request to the shared queue.
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Claim this request", exact: true }),
+  ).toBeVisible();
   // Every card on the Change orders page copies on its own.
-  await page.getByRole("button", { name: "Change orders", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Change orders", exact: true })
+    .click();
+  await expect(page.locator(".order-card")).toHaveCount(1);
   await page
     .getByRole("button", { name: "Copy Dash note", exact: true })
     .click();
@@ -754,6 +793,7 @@ test("one click copies a Dash note from the open request and the orders list", a
   expect(listedNote).toContain(
     "- Bathroom — add: Install two exhaust fans (bathroom fans)",
   );
+  expect(listedNote).toContain("2 changes · Submitted");
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -799,8 +839,8 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
   await expect(
     page.getByLabel("Property address", { exact: true }),
   ).toHaveValue("1825 Sprunger St., Fort Wayne, IN 46808");
-  await expect(
-    page.getByLabel("Project manager", { exact: true }),
-  ).toHaveValue("Lance Stanley");
+  await expect(page.getByLabel("Project manager", { exact: true })).toHaveValue(
+    "Lance Stanley",
+  );
   expect(runtimeErrors).toEqual([]);
 });

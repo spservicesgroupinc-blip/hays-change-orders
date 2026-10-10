@@ -1,10 +1,32 @@
-import type { AttachmentKind, ChangeOrderDraft, ChangeRequest, DraftSummary, JobEntry, RequestAttachment, RequestStatus, RequestSummary } from "../types";
+import type {
+  AttachmentKind,
+  ChangeOrderDraft,
+  ChangeRequest,
+  DraftSummary,
+  JobEntry,
+  RequestAttachment,
+  RequestStatus,
+  RequestSummary,
+} from "../types";
 
 export class ApiError extends Error {
-  constructor(message: string, public code = "SERVICE_ERROR", public currentRevision?: number) { super(message); this.name = "ApiError"; }
+  constructor(
+    message: string,
+    public code = "SERVICE_ERROR",
+    public currentRevision?: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
-function apiFailure(payload: {error?: string; code?: string; currentRevision?: number} | null): never {
-  throw new ApiError(payload?.error || "The sync service is unavailable.", payload?.code, payload?.currentRevision);
+function apiFailure(
+  payload: { error?: string; code?: string; currentRevision?: number } | null,
+): never {
+  throw new ApiError(
+    payload?.error || "The sync service is unavailable.",
+    payload?.code,
+    payload?.currentRevision,
+  );
 }
 
 export interface SerializedSource {
@@ -29,9 +51,11 @@ interface ServerSummary {
   hasSource: boolean;
 }
 function env(name: string): string | undefined {
-  const value = (import.meta as unknown as {
-    env?: Record<string, string | undefined>;
-  }).env;
+  const value = (
+    import.meta as unknown as {
+      env?: Record<string, string | undefined>;
+    }
+  ).env;
   return value?.[name];
 }
 const API_URL = env("VITE_APPS_SCRIPT_URL") || "/__api__";
@@ -44,14 +68,11 @@ function query(params: Record<string, string | undefined>): string {
     )
     .join("&");
 }
-async function get<T>(
-  params: Record<string, string | undefined>,
-): Promise<T> {
+async function get<T>(params: Record<string, string | undefined>): Promise<T> {
   const separator = API_URL.includes("?") ? "&" : "?";
   const response = await fetch(`${API_URL}${separator}${query(params)}`);
   const payload = await response.json();
-  if (!payload || payload.ok === false)
-    apiFailure(payload);
+  if (!payload || payload.ok === false) apiFailure(payload);
   return payload as T;
 }
 async function post<T>(body: Record<string, unknown>): Promise<T> {
@@ -61,8 +82,7 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
     body: JSON.stringify(body),
   });
   const payload = await response.json();
-  if (!payload || payload.ok === false)
-    apiFailure(payload);
+  if (!payload || payload.ok === false) apiFailure(payload);
   return payload as T;
 }
 export function serializeDraft(draft: ChangeOrderDraft): SerializedDraft {
@@ -179,41 +199,126 @@ function base64ToBlob(data: string, mimeType: string): Blob {
 }
 
 export async function listRequests(): Promise<RequestSummary[]> {
-  const data = await get<{ requests: RequestSummary[] }>({ action: "listRequests" });
+  const data = await get<{ requests: RequestSummary[] }>({
+    action: "listRequests",
+  });
   return data.requests;
 }
 export async function openRequest(id: string): Promise<ChangeRequest> {
-  const data = await get<{ request: ChangeRequest }>({ action: "openRequest", id });
+  const data = await get<{ request: ChangeRequest }>({
+    action: "openRequest",
+    id,
+  });
   return data.request;
 }
-export async function saveRequest(request: ChangeRequest, expectedRevision: number, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "saveRequest", request, expectedRevision, mutationId });
+export async function saveRequest(
+  request: ChangeRequest,
+  expectedRevision: number,
+  mutationId: string,
+): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({
+    action: "saveRequest",
+    request,
+    expectedRevision,
+    mutationId,
+  });
   return data.request;
 }
-export async function claimRequest(id: string, expectedRevision: number, estimatorName: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "claimRequest", id, expectedRevision, estimatorName, mutationId });
+export async function claimRequest(
+  id: string,
+  expectedRevision: number,
+  estimatorName: string,
+  mutationId: string,
+): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({
+    action: "claimRequest",
+    id,
+    expectedRevision,
+    estimatorName,
+    mutationId,
+  });
   return data.request;
 }
-export async function transitionRequest(id: string, expectedRevision: number, status: RequestStatus, question: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "transitionRequest", id, expectedRevision, status, question, mutationId });
+export async function transitionRequest(
+  id: string,
+  expectedRevision: number,
+  status: RequestStatus,
+  question: string,
+  mutationId: string,
+): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({
+    action: "transitionRequest",
+    id,
+    expectedRevision,
+    status,
+    question,
+    mutationId,
+  });
   return data.request;
 }
-export interface AttachmentUpload { name: string; mimeType: string; size: number; kind: AttachmentKind; data: string }
-export async function uploadAttachment(requestId: string, file: AttachmentUpload, attachmentId: string, mutationId: string): Promise<RequestAttachment> {
-  const data = await post<{ attachment: RequestAttachment }>({ action: "uploadAttachment", requestId, attachmentId, mutationId, file });
+export interface AttachmentUpload {
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: AttachmentKind;
+  data: string;
+}
+export async function uploadAttachment(
+  requestId: string,
+  file: AttachmentUpload,
+  attachmentId: string,
+  mutationId: string,
+): Promise<RequestAttachment> {
+  const data = await post<{ attachment: RequestAttachment }>({
+    action: "uploadAttachment",
+    requestId,
+    attachmentId,
+    mutationId,
+    file,
+  });
   return data.attachment;
 }
-export interface DocumentUpload { name: string; mimeType: string; size: number; data: string }
-export async function completeRequest(id: string, expectedRevision: number, documents: DocumentUpload[], mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "completeRequest", id, expectedRevision, documents, mutationId });
+export interface DocumentUpload {
+  name: string;
+  mimeType: string;
+  size: number;
+  data: string;
+}
+export async function completeRequest(
+  id: string,
+  expectedRevision: number,
+  documents: DocumentUpload[],
+  mutationId: string,
+): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({
+    action: "completeRequest",
+    id,
+    expectedRevision,
+    documents,
+    mutationId,
+  });
   return data.request;
 }
-export async function fetchAttachment(requestId: string, attachmentId: string): Promise<{ name: string; blob: Blob }> {
-  const data = await get<{ name: string; mimeType: string; data: string }>({ action: "fetchAttachment", requestId, attachmentId });
+export async function fetchAttachment(
+  requestId: string,
+  attachmentId: string,
+): Promise<{ name: string; blob: Blob }> {
+  const data = await get<{ name: string; mimeType: string; data: string }>({
+    action: "fetchAttachment",
+    requestId,
+    attachmentId,
+  });
   return { name: data.name, blob: base64ToBlob(data.data, data.mimeType) };
 }
-export async function convertLegacyRequest(id: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "convertLegacyRequest", id, mutationId });
+export async function convertLegacyRequest(
+  id: string,
+  mutationId: string,
+): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({
+    action: "convertLegacyRequest",
+    id,
+    mutationId,
+  });
   return data.request;
 }
 export async function listJobs(): Promise<JobEntry[]> {

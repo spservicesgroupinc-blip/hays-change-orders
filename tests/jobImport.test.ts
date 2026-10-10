@@ -75,9 +75,7 @@ test("maps the JobSummaryReport columns onto jobs and warns on gaps", () => {
   // The huge Notes column is never carried into a job.
   assert.equal("notes" in biggs, false);
 
-  const pending = result.jobs.find(
-    (job) => job.jobNumber === "F-26-0115-WAR",
-  );
+  const pending = result.jobs.find((job) => job.jobNumber === "F-26-0115-WAR");
   assert.ok(pending);
   assert.equal(pending.active, false);
   assert.equal(pending.projectManager, "");
@@ -88,10 +86,14 @@ test("maps the JobSummaryReport columns onto jobs and warns on gaps", () => {
   assert.equal(mangled.customer, "");
 
   assert.ok(
-    result.warnings.some((warning) => /F-26-0115-WAR.*project manager/.test(warning)),
+    result.warnings.some((warning) =>
+      /F-26-0115-WAR.*project manager/.test(warning),
+    ),
   );
   assert.ok(
-    result.warnings.some((warning) => /F-26-0240-R.*project manager/.test(warning)),
+    result.warnings.some((warning) =>
+      /F-26-0240-R.*project manager/.test(warning),
+    ),
   );
   assert.ok(
     result.warnings.some((warning) => /F-26-0350-R.*no customer/.test(warning)),
@@ -102,11 +104,9 @@ test("maps the JobSummaryReport columns onto jobs and warns on gaps", () => {
 });
 
 test("skips rows without a job number and rejects unrelated files", () => {
-  const rows = [
-    "Job Number,Customer",
-    ",No job number",
-    "F-1,Named job",
-  ].join("\n");
+  const rows = ["Job Number,Customer", ",No job number", "F-1,Named job"].join(
+    "\n",
+  );
   const result = parseJobReport(rows);
   assert.equal(result.total, 1);
   assert.equal(result.skipped, 1);

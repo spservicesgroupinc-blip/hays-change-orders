@@ -34,7 +34,13 @@ export interface ChangeItem {
   customerPrice?: { total: string; tax: string | null; op: string | null };
   manualCredit?: string;
 }
-export type RequestStatus = "draft" | "submitted" | "in_review" | "needs_information" | "ready" | "completed";
+export type RequestStatus =
+  | "draft"
+  | "submitted"
+  | "in_review"
+  | "needs_information"
+  | "ready"
+  | "completed";
 export type AttachmentKind = "estimate" | "quote" | "photo" | "document";
 export interface RequestedChange {
   id: string;
@@ -104,7 +110,10 @@ export interface RequestSummary {
   estimatorName: string;
   changesCount: number;
   attachmentsCount: number;
-  job: Pick<JobDetails, "customer" | "jobNumber" | "projectManager" | "orderNumber" | "address">;
+  job: Pick<
+    JobDetails,
+    "customer" | "jobNumber" | "projectManager" | "orderNumber" | "address"
+  >;
 }
 export interface JobDetails {
   customer: string;
