@@ -16,6 +16,7 @@ import type {
   AttachmentKind,
   ChangeRequest,
   EstimateItem,
+  JobEntry,
   PendingUpload,
   RequestAttachment,
   RequestedChange,
@@ -24,9 +25,11 @@ import type {
 import { createQuote, createRequestedChange } from "../services/requests";
 import { money, cents, validDecimal } from "../services/pricing";
 import "./PMRequestForm.css";
+import "./JobPicker.css";
 
 export interface PMRequestFormProps {
   request: ChangeRequest;
+  jobs?: JobEntry[];
   onChange: (next: ChangeRequest) => void;
   pendingUploads: PendingUpload[];
   onUpload: (
@@ -607,6 +610,78 @@ function QuoteCard({
   );
 }
 
+function JobPicker({
+  jobs,
+  onPick,
+}: {
+  jobs: JobEntry[];
+  onPick: (job: JobEntry) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const query = deferredSearch.trim().toLowerCase();
+  const matches = useMemo(() => {
+    const pool = query ? jobs : jobs.filter((job) => job.active);
+    return pool
+      .filter((job) =>
+        `${job.jobNumber} ${job.customer} ${job.address} ${job.projectManager}`
+          .toLowerCase()
+          .includes(query),
+      )
+      .slice(0, 6);
+  }, [jobs, query]);
+  if (!jobs.length) return null;
+  return (
+    <div className="pm-job-picker">
+      <label className="pm-job-search">
+        <span>Find your job</span>
+        <span className="pm-job-search-box">
+          <Search size={16} />
+          <input
+            aria-label="Find your job"
+            placeholder="Job number, customer, address, or PM…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </span>
+      </label>
+      <ul className="pm-job-results">
+        {matches.map((job) => (
+          <li key={job.id}>
+            <button
+              type="button"
+              aria-label={`Use job ${job.jobNumber}`}
+              onClick={() => {
+                onPick(job);
+                setSearch("");
+              }}
+            >
+              <strong>{job.jobNumber}</strong>
+              <span>
+                {job.customer || "No customer"} · PM:{" "}
+                {job.projectManager || "Unassigned"}
+              </span>
+              <small>
+                {job.address || "No address"}
+                {job.status ? ` · ${job.status}` : ""}
+              </small>
+            </button>
+          </li>
+        ))}
+        {!matches.length ? (
+          <li className="pm-job-empty">
+            No job matches “{search.trim()}”. Enter the details below instead.
+          </li>
+        ) : null}
+      </ul>
+      <p className="pm-caption">
+        Pick a job to fill the details below automatically, or type them in
+        manually.
+      </p>
+    </div>
+  );
+}
+
 export function IntakeReceipt({
   request,
   onPreview,
@@ -803,6 +878,7 @@ export function IntakeReceipt({
 
 export default function PMRequestForm({
   request,
+  jobs = [],
   onChange,
   pendingUploads,
   onUpload,
@@ -893,9 +969,27 @@ export default function PMRequestForm({
         <div className="pm-section-heading">
           <div>
             <h2 id="pm-project-title">Job details</h2>
-            <p>Identify the project and the PM making this request.</p>
+            <p>
+              Pick the job so the details fill in, then adjust anything that
+              needs it.
+            </p>
           </div>
         </div>
+        <JobPicker
+          jobs={jobs}
+          onPick={(job) =>
+            change({
+              ...request,
+              job: {
+                ...request.job,
+                jobNumber: job.jobNumber,
+                customer: job.customer,
+                address: job.address,
+                projectManager: job.projectManager,
+              },
+            })
+          }
+        />
         <div className="pm-grid">
           <TextField
             name="job-jobNumber"

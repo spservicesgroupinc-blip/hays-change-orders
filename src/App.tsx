@@ -7,6 +7,7 @@ import {
   Clock3,
   FileText,
   FolderOpen,
+  ListChecks,
   Plus,
   Search,
   Send,
@@ -19,6 +20,7 @@ import {
   type ChangeRequest,
   type DraftSummary,
   type JobDetails,
+  type JobEntry,
   type PendingUpload,
   type RequestAttachment,
   type RequestStatus,
@@ -32,6 +34,7 @@ import {
   convertLegacyRequest,
   fetchAttachment,
   listDrafts,
+  listJobs,
   listRequests,
   openRequest,
   transitionRequest,
@@ -45,6 +48,7 @@ import {
 import PMRequestForm, { IntakeReceipt } from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import ChangeOrders from "./components/ChangeOrders";
+import AdminJobs from "./components/AdminJobs";
 import LegacyWorkspace from "./LegacyWorkspace";
 import PdfViewer from "./components/PdfViewer";
 import InstallApp from "./components/InstallApp";
@@ -62,6 +66,7 @@ type View =
   | { kind: "home" }
   | { kind: "request"; id: string }
   | { kind: "legacy"; startNew: boolean }
+  | { kind: "jobs" }
   | { kind: "orders" };
 const VIEW_KEY = "hays-active-view";
 function restoreView(): View {
@@ -71,6 +76,7 @@ function restoreView(): View {
       const parsed = JSON.parse(raw) as View;
       if (parsed.kind === "legacy") return { kind: "legacy", startNew: false };
       if (parsed.kind === "orders") return { kind: "orders" };
+      if (parsed.kind === "jobs") return { kind: "jobs" };
       if (parsed.kind === "request" && parsed.id)
         return { kind: "request", id: parsed.id };
     }
@@ -209,6 +215,7 @@ export default function App() {
   const [view, setViewState] = useState<View>(restoreView);
   const [requests, setRequests] = useState<RequestSummary[]>([]);
   const [legacyDrafts, setLegacyDrafts] = useState<DraftSummary[]>([]);
+  const [jobs, setJobs] = useState<JobEntry[]>([]);
   const [ready, setReady] = useState(false);
   const [listError, setListError] = useState("");
   const [homeSearch, setHomeSearch] = useState("");
@@ -257,8 +264,16 @@ export default function App() {
       setListError(error instanceof Error ? error.message : String(error));
     }
   };
+  const refreshJobs = async () => {
+    try {
+      setJobs(await listJobs());
+    } catch {
+      // The job directory is optional; requests still work without it.
+    }
+  };
   useEffect(() => {
     void refresh().finally(() => setReady(true));
+    void refreshJobs();
     const initial = viewRef.current;
     if (initial.kind === "request") void openRequestById(initial.id);
     const onHide = () => {
@@ -682,6 +697,18 @@ export default function App() {
       </>
     );
 
+  if (view.kind === "jobs")
+    return (
+      <>
+        <InstallApp />
+        <AdminJobs
+          jobs={jobs}
+          onBack={() => void goHome()}
+          onImported={setJobs}
+        />
+      </>
+    );
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -697,6 +724,13 @@ export default function App() {
           >
             <Archive size={16} />
             Change orders
+          </button>
+          <button
+            className="button small"
+            onClick={() => setView({ kind: "jobs" })}
+          >
+            <ListChecks size={16} />
+            Jobs
           </button>
           {view.kind === "request" ? (
             <button className="button small" onClick={() => void goHome()}>
@@ -757,6 +791,7 @@ export default function App() {
               request.status === "needs_information" ? (
               <PMRequestForm
                 request={request}
+                jobs={jobs}
                 onChange={edit}
                 pendingUploads={pendingUploads}
                 onUpload={handleUpload}

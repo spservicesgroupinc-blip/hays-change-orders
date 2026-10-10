@@ -11,6 +11,7 @@ async function installMockApi(page: Page) {
     { name: string; data: string; mimeType: string }
   >();
   const requests = new Map<string, any>();
+  const jobs = new Map<string, any>();
   const mutations = new Map<string, string>();
   const requestFiles = new Map<
     string,
@@ -223,6 +224,15 @@ async function installMockApi(page: Page) {
       return file
         ? respond({ ok: true, ...file })
         : respond({ ok: false, error: "Attachment not found." });
+    }
+    if (action === "listJobs") {
+      return respond({ ok: true, jobs: [...jobs.values()] });
+    }
+    if (action === "importJobs") {
+      const list = Array.isArray(body.jobs) ? (body.jobs as any[]) : [];
+      jobs.clear();
+      for (const job of list) jobs.set(String(job.jobNumber), job);
+      return respond({ ok: true, jobs: list });
     }
     if (action === "convertLegacyRequest") {
       const legacy = drafts.get(String(body.id));
@@ -604,5 +614,50 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
     page.getByRole("button", { name: "Download packet", exact: true }),
   ).toBeVisible({ timeout: 15000 });
   await expect(page.locator(".summary-grid")).toContainText("$46,200.00");
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("an admin imports jobs, then the PM picker autofills the job details", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Jobs", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Manage the job list", exact: true }),
+  ).toBeVisible();
+  const csv = [
+    "Status,Job Number,Customer,Customer Main Phone,Customer Email,Job Address,Loss City,Loss State,Loss ZIP,Estimator,ForePerson",
+    "Work in Progress,F-26-0366-R,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Russell Shive,Lance Stanley",
+    "Work in Progress,F-26-0366-P,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Angela Tuddy,Tarreck ElBarassi",
+  ].join("\n");
+  await page.getByLabel("Paste job report CSV").fill(csv);
+  await page.getByRole("button", { name: "Preview jobs", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "2 jobs ready to import", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Import 2 jobs", exact: true })
+    .click();
+  await expect(page.getByText(/2 jobs imported/)).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to requests", exact: true })
+    .click();
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await page.getByLabel("Find your job").fill("Sprunger");
+  await page.getByRole("button", { name: "Use job F-26-0366-R" }).click();
+  await expect(page.getByLabel("Job number", { exact: true })).toHaveValue(
+    "F-26-0366-R",
+  );
+  await expect(
+    page.getByLabel("Customer / project owner", { exact: true }),
+  ).toHaveValue("York Tori");
+  await expect(
+    page.getByLabel("Property address", { exact: true }),
+  ).toHaveValue("1825 Sprunger St., Fort Wayne, IN 46808");
+  await expect(
+    page.getByLabel("Project manager", { exact: true }),
+  ).toHaveValue("Lance Stanley");
   expect(runtimeErrors).toEqual([]);
 });

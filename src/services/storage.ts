@@ -1,4 +1,4 @@
-import type { AttachmentKind, ChangeOrderDraft, ChangeRequest, DraftSummary, RequestAttachment, RequestStatus, RequestSummary } from "../types";
+import type { AttachmentKind, ChangeOrderDraft, ChangeRequest, DraftSummary, JobEntry, RequestAttachment, RequestStatus, RequestSummary } from "../types";
 
 export class ApiError extends Error {
   constructor(message: string, public code = "SERVICE_ERROR", public currentRevision?: number) { super(message); this.name = "ApiError"; }
@@ -215,4 +215,12 @@ export async function fetchAttachment(requestId: string, attachmentId: string): 
 export async function convertLegacyRequest(id: string, mutationId: string): Promise<ChangeRequest> {
   const data = await post<{ request: ChangeRequest }>({ action: "convertLegacyRequest", id, mutationId });
   return data.request;
+}
+export async function listJobs(): Promise<JobEntry[]> {
+  const data = await get<{ jobs: JobEntry[] }>({ action: "listJobs" });
+  return data.jobs;
+}
+export async function importJobs(jobs: JobEntry[]): Promise<JobEntry[]> {
+  const data = await post<{ jobs: JobEntry[] }>({ action: "importJobs", jobs });
+  return data.jobs;
 }

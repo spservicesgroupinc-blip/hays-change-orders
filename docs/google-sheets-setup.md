@@ -34,8 +34,9 @@ step 4.
 2. Accept the OAuth consent for **Google Sheets** and **Google Drive** when
    prompted.
 3. `setup()` creates the **Drafts** sheet (legacy change orders), the
-   **Requests** sheet (PM request queue), and the **hays-change-orders**
-   Drive folder. It shows a dialog with the deploy instructions.
+   **Requests** sheet (PM request queue), the **Jobs** sheet (job directory),
+   and the **hays-change-orders** Drive folder. It shows a dialog with the
+   deploy instructions.
 
 Re-running `setup()` is safe: it reuses the existing sheets and folder.
 
@@ -89,6 +90,11 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
   forward for estimator review.
 - **Upload size**: the client caps uploads at 15 MB. Apps Script web-app POST
   bodies are limited, and files travel as base64 (~1.33× their size).
+- **Job directory**: the **Jobs** sheet is maintained from the app's **Jobs**
+  page — import the Dash JobSummaryReport CSV (`GET ?action=listJobs`,
+  `POST {action:"importJobs"}`). Importing replaces the whole list. Project
+  managers pick a job in the request form to autofill the job number,
+  customer, property address, and responsible project manager.
 - **Limits**: list/open return JSON; the sheet stores summaries rather than
   full documents.
 - **Revisions**: saves and status changes carry an expected revision and a

@@ -130,6 +130,21 @@ export interface SourceFile {
   blob: Blob | null;
   driveFileId: string | null;
 }
+// A row in the admin-managed job directory imported from the Dash
+// JobSummaryReport. The PM picks one to autofill the request's job details.
+export interface JobEntry {
+  id: string;
+  jobNumber: string;
+  customer: string;
+  address: string;
+  projectManager: string;
+  estimator: string;
+  status: string;
+  customerPhone: string;
+  customerEmail: string;
+  active: boolean;
+  updatedAt: string;
+}
 export interface DraftSummary {
   id: string;
   revision: number;

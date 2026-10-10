@@ -100,6 +100,7 @@ function setup() {
   const sheet = sheet_();
   const folder = folder_();
   requestsSheet_();
+  jobsSheet_();
   const summary = [
     "Setup complete.",
     "Drafts sheet: " + sheet.getName(),
@@ -184,6 +185,7 @@ function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === "listRequests") return guarded_(function () { return listRequests_(); });
   if (p.action === "openRequest") return guarded_(function () { return openRequest_(p.id); });
+  if (p.action === "listJobs") return guarded_(function () { return listJobs_(); });
   if (p.action === "fetchAttachment") return guarded_(function () { return fetchAttachment_(p.requestId, p.attachmentId); });
   if (p.action === "list") return list_();
   if (p.action === "open") return open_(p.id);
@@ -205,6 +207,7 @@ function doPost(e) {
   if (body.action === "uploadAttachment") return guarded_(function () { return uploadAttachment_(body); });
   if (body.action === "completeRequest") return guarded_(function () { return completeRequest_(body); });
   if (body.action === "convertLegacyRequest") return guarded_(function () { return convertLegacyRequest_(body); });
+  if (body.action === "importJobs") return guarded_(function () { return importJobs_(body); });
   if (body.action === "save") return save_(body.draft);
   if (body.action === "delete") return delete_(body.id);
   if (body.action === "uploadPdf") return uploadPdf_(body);
@@ -297,6 +300,7 @@ function uploadPdf_(body) {
 }
 
 const REQUEST_HEADERS = ["id", "revision", "createdAt", "updatedAt", "status", "estimatorName", "customer", "jobNumber", "projectManager", "orderNumber", "address", "changesCount", "attachmentsCount", "dataFileId", "previousDataFileId", "folderId"];
+const JOB_HEADERS = ["id", "jobNumber", "customer", "address", "projectManager", "estimator", "status", "customerPhone", "customerEmail", "active", "updatedAt"];
 const RC = { ID: 0, REVISION: 1, CREATED: 2, UPDATED: 3, STATUS: 4, ESTIMATOR: 5, CUSTOMER: 6, JOB: 7, PM: 8, ORDER: 9, ADDRESS: 10, CHANGES: 11, ATTACHMENTS: 12, DATA: 13, PREVIOUS: 14, FOLDER: 15 };
 function problem_(code, message, revision) { const error = new Error(message); error.code = code; error.currentRevision = revision; throw error; }
 function guarded_(fn) { try { return fn(); } catch (error) { return fail_(error.message || "The sync service is unavailable.", error.code, error.currentRevision); } }
@@ -315,6 +319,34 @@ function requestsSheet_() {
   let sheet = ss.getSheetByName("Requests");
   if (!sheet) { sheet = ss.insertSheet("Requests"); sheet.appendRow(REQUEST_HEADERS); }
   return sheet;
+}
+function jobsSheet_() {
+  const ss = spreadsheet_();
+  let sheet = ss.getSheetByName("Jobs");
+  if (!sheet) { sheet = ss.insertSheet("Jobs"); sheet.appendRow(JOB_HEADERS); }
+  return sheet;
+}
+function jobRow_(v) {
+  return { id: String(v[0]), jobNumber: String(v[1] || ""), customer: String(v[2] || ""), address: String(v[3] || ""), projectManager: String(v[4] || ""), estimator: String(v[5] || ""), status: String(v[6] || ""), customerPhone: String(v[7] || ""), customerEmail: String(v[8] || ""), active: v[9] === true || String(v[9]).toLowerCase() === "true", updatedAt: String(v[10] || "") };
+}
+function listJobs_() {
+  const sheet = jobsSheet_(); const last = sheet.getLastRow();
+  const rows = last < 2 ? [] : sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).getValues();
+  return json_({ ok: true, jobs: rows.map(jobRow_) });
+}
+function importJobs_(body) {
+  if (!body || !Array.isArray(body.jobs)) problem_("VALIDATION", "A jobs array is required.");
+  if (body.jobs.length > 5000) problem_("VALIDATION", "Too many jobs to import at once.");
+  const sheet = jobsSheet_();
+  const now = new Date().toISOString();
+  const values = body.jobs.map(function (job) {
+    return [String(job.id || ""), String(job.jobNumber || ""), String(job.customer || ""), String(job.address || ""), String(job.projectManager || ""), String(job.estimator || ""), String(job.status || ""), String(job.customerPhone || ""), String(job.customerEmail || ""), Boolean(job.active), String(job.updatedAt || now)];
+  });
+  const last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).clearContent();
+  if (values.length) sheet.getRange(2, 1, values.length, JOB_HEADERS.length).setValues(values);
+  SpreadsheetApp.flush();
+  return json_({ ok: true, jobs: body.jobs });
 }
 function requestRow_(id) {
   const sheet = requestsSheet_();
