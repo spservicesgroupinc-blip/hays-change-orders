@@ -593,10 +593,12 @@
   bottom: 14px;
   margin: 28px 0 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 20px;
   padding: 20px 24px;
+  max-width: 100%;
   background: #fff;
   border: 1px solid #dde3eb;
   box-shadow: 0 6px 25px #17202e0d;
@@ -619,6 +621,7 @@
 .pm-submit-bar .button {
   min-height: 47px;
   padding: 12px 19px;
+  max-width: 100%;
 }
 .pm-receipt-banner {
   display: flex;

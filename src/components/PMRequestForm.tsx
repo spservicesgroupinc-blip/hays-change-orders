@@ -620,15 +620,17 @@ function JobPicker({
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const query = deferredSearch.trim().toLowerCase();
+  // Only search results are shown — never the full customer list. The query
+  // matches the job number, customer, address, or responsible PM.
   const matches = useMemo(() => {
-    const pool = query ? jobs : jobs.filter((job) => job.active);
-    return pool
+    if (!query) return [];
+    return jobs
       .filter((job) =>
         `${job.jobNumber} ${job.customer} ${job.address} ${job.projectManager}`
           .toLowerCase()
           .includes(query),
       )
-      .slice(0, 6);
+      .slice(0, 8);
   }, [jobs, query]);
   if (!jobs.length) return null;
   return (
@@ -643,41 +645,53 @@ function JobPicker({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-        </span>
-      </label>
-      <ul className="pm-job-results">
-        {matches.map((job) => (
-          <li key={job.id}>
+          {search ? (
             <button
               type="button"
-              aria-label={`Use job ${job.jobNumber}`}
-              onClick={() => {
-                onPick(job);
-                setSearch("");
-              }}
+              className="pm-job-clear"
+              aria-label="Clear job search"
+              onClick={() => setSearch("")}
             >
-              <strong>{job.jobNumber}</strong>
-              <span>
-                {job.customer || "No customer"} · PM:{" "}
-                {job.projectManager || "Unassigned"}
-              </span>
-              <small>
-                {job.address || "No address"}
-                {job.status ? ` · ${job.status}` : ""}
-              </small>
+              <X size={16} />
             </button>
-          </li>
-        ))}
-        {!matches.length ? (
-          <li className="pm-job-empty">
-            No job matches “{search.trim()}”. Enter the details below instead.
-          </li>
-        ) : null}
-      </ul>
-      <p className="pm-caption">
-        Pick a job to fill the details below automatically, or type them in
-        manually.
-      </p>
+          ) : null}
+        </span>
+      </label>
+      {query ? (
+        <ul className="pm-job-results">
+          {matches.map((job) => (
+            <li key={job.id}>
+              <button
+                type="button"
+                aria-label={`Use job ${job.jobNumber}`}
+                onClick={() => {
+                  onPick(job);
+                  setSearch("");
+                }}
+              >
+                <strong>{job.jobNumber}</strong>
+                <span>
+                  {job.customer || "No customer"} · PM:{" "}
+                  {job.projectManager || "Unassigned"}
+                </span>
+                <small>
+                  {job.address || "No address"}
+                  {job.status ? ` · ${job.status}` : ""}
+                </small>
+              </button>
+            </li>
+          ))}
+          {!matches.length ? (
+            <li className="pm-job-empty">
+              No job matches “{search.trim()}”. Enter the details below instead.
+            </li>
+          ) : null}
+        </ul>
+      ) : (
+        <p className="pm-caption pm-job-hint">
+          Start typing to find your job. Pick one and the details below fill in.
+        </p>
+      )}
     </div>
   );
 }

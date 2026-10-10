@@ -645,7 +645,10 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
     .getByRole("button", { name: "Back to requests", exact: true })
     .click();
   await page.getByRole("button", { name: "New request", exact: true }).click();
+  // The picker stays empty until the PM types — never the full customer list.
+  await expect(page.locator(".pm-job-results")).toHaveCount(0);
   await page.getByLabel("Find your job").fill("Sprunger");
+  await expect(page.locator(".pm-job-results")).toBeVisible();
   await page.getByRole("button", { name: "Use job F-26-0366-R" }).click();
   await expect(page.getByLabel("Job number", { exact: true })).toHaveValue(
     "F-26-0366-R",

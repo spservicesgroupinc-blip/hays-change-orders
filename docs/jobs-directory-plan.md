@@ -3,7 +3,8 @@
 Goal: an admin imports a list of current jobs once; project managers pick a job
 from a searchable dropdown and the request form autofills the job details.
 
-Status: plan only, nothing implemented yet.
+Status: **Phase 1 implemented** (parser, Jobs sheet + endpoints, admin import
+view, PM picker, tests). Phases 2–3 not started.
 
 ---
 

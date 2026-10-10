@@ -30,6 +30,22 @@
   color: inherit;
   background: transparent;
 }
+.pm-job-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  margin: -4px -4px -4px 0;
+  border-radius: 6px;
+  color: #8a93a1;
+  cursor: pointer;
+}
+.pm-job-clear:hover {
+  background: #f1f4f7;
+  color: #45505f;
+}
 .pm-job-results {
   list-style: none;
   margin: 8px 0 0;
@@ -37,13 +53,18 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .pm-job-results button {
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 100%;
+  min-height: 44px;
   text-align: left;
+  overflow-wrap: anywhere;
   border: 1px solid #e1e6eb;
   border-radius: 9px;
   background: #fff;
@@ -82,4 +103,35 @@
 }
 .pm-job-picker + .pm-grid {
   margin-top: 4px;
+}
+.pm-job-hint {
+  margin: 8px 2px 0;
+  display: block;
+}
+@media (max-width: 760px) {
+  .pm-job-picker {
+    margin-bottom: 18px;
+  }
+  .pm-job-search-box {
+    padding: 12px 14px;
+  }
+  .pm-job-search-box input {
+    font-size: 16px;
+  }
+  .pm-job-results {
+    gap: 8px;
+    max-height: 46vh;
+  }
+  .pm-job-results button {
+    padding: 12px 14px;
+    min-height: 52px;
+  }
+  .pm-job-results button strong {
+    font-size: 14px;
+  }
+  .pm-job-results button span,
+  .pm-job-results button small,
+  .pm-job-empty {
+    font-size: 13px;
+  }
 }
