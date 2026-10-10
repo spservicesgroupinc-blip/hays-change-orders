@@ -34,8 +34,8 @@ export interface ChangeItem {
   customerPrice?: { total: string; tax: string | null; op: string | null };
   manualCredit?: string;
 }
-export type RequestStatus = "draft" | "submitted" | "in_review" | "needs_information" | "ready";
-export type AttachmentKind = "estimate" | "quote" | "photo";
+export type RequestStatus = "draft" | "submitted" | "in_review" | "needs_information" | "ready" | "completed";
+export type AttachmentKind = "estimate" | "quote" | "photo" | "document";
 export interface RequestedChange {
   id: string;
   room: string;

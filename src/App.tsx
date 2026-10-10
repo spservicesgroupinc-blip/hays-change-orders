@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Archive,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
@@ -23,10 +24,11 @@ import {
   type RequestStatus,
   type RequestSummary,
 } from "./types";
-import { createRequest } from "./services/requests";
+import { createRequest, requestToDraft } from "./services/requests";
 import {
   blobToBase64,
   claimRequest,
+  completeRequest as finalizeRequest,
   convertLegacyRequest,
   fetchAttachment,
   listDrafts,
@@ -42,6 +44,7 @@ import {
 } from "./services/requestEditor";
 import PMRequestForm from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
+import ChangeOrders from "./components/ChangeOrders";
 import LegacyWorkspace from "./LegacyWorkspace";
 import PdfViewer from "./components/PdfViewer";
 import InstallApp from "./components/InstallApp";
@@ -53,11 +56,13 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
   in_review: "In review",
   needs_information: "Needs info",
   ready: "Ready",
+  completed: "Completed",
 };
 type View =
   | { kind: "home" }
   | { kind: "request"; id: string }
-  | { kind: "legacy"; startNew: boolean };
+  | { kind: "legacy"; startNew: boolean }
+  | { kind: "orders" };
 const VIEW_KEY = "hays-active-view";
 function restoreView(): View {
   try {
@@ -65,6 +70,7 @@ function restoreView(): View {
     if (raw) {
       const parsed = JSON.parse(raw) as View;
       if (parsed.kind === "legacy") return { kind: "legacy", startNew: false };
+      if (parsed.kind === "orders") return { kind: "orders" };
       if (parsed.kind === "request" && parsed.id)
         return { kind: "request", id: parsed.id };
     }
@@ -421,6 +427,49 @@ export default function App() {
       setBusy("");
     }
   }
+  async function completeRequest() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    setBusy("Storing final documents…");
+    setSaveError("");
+    try {
+      await flush();
+      const request = editor.current;
+      const draft = requestToDraft(request);
+      const { generateDocuments } = await import("./services/pdfGenerate");
+      const docs = await generateDocuments(draft);
+      const stem = `${draft.job.jobNumber}_${draft.job.orderNumber}`.replace(
+        /[^A-Za-z0-9_-]/g,
+        "_",
+      );
+      const documents = await Promise.all(
+        (
+          [
+            ["Combined", docs.combined],
+            ["Cover", docs.form],
+            ["Attachment_A", docs.attachment],
+          ] as const
+        ).map(async ([label, blob]) => ({
+          name: `${stem}_${label}.pdf`,
+          mimeType: "application/pdf",
+          size: blob.size,
+          data: await blobToBase64(blob),
+        })),
+      );
+      const server = await finalizeRequest(
+        request.id,
+        request.revision,
+        documents,
+        newId(),
+      );
+      editor.commit(server);
+      void refresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
+  }
 
   function addPending(file: File, kind: AttachmentKind, quoteId?: string) {
     const id = newId();
@@ -605,6 +654,18 @@ export default function App() {
       </div>
     );
 
+  if (view.kind === "orders")
+    return (
+      <>
+        <InstallApp />
+        <ChangeOrders
+          requests={requests}
+          onOpen={(id) => void openRequestById(id)}
+          onBack={() => void goHome()}
+        />
+      </>
+    );
+
   if (view.kind === "legacy")
     return (
       <>
@@ -627,6 +688,13 @@ export default function App() {
             <ShieldCheck size={15} />
             Shared with your team
           </span>
+          <button
+            className="button small"
+            onClick={() => setView({ kind: "orders" })}
+          >
+            <Archive size={16} />
+            Change orders
+          </button>
           {view.kind === "request" ? (
             <button className="button small" onClick={() => void goHome()}>
               <FolderOpen size={16} />
@@ -702,6 +770,7 @@ export default function App() {
                 onChange={edit}
                 onAskInformation={(question) => void askInformation(question)}
                 onReady={() => void markReady()}
+                onComplete={() => void completeRequest()}
                 onPreviewAttachment={(attachment) =>
                   void previewAttachment(attachment)
                 }

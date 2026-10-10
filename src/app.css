@@ -68,6 +68,11 @@
   background: #ecf8ef;
   color: #1f7a3d;
 }
+.request-status.status-completed {
+  border-color: #cfd6df;
+  background: #eef1f5;
+  color: #3f4a58;
+}
 .request-row-main {
   flex: 1;
   min-width: 0;

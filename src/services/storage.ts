@@ -208,6 +208,11 @@ export async function uploadAttachment(requestId: string, file: AttachmentUpload
   const data = await post<{ attachment: RequestAttachment }>({ action: "uploadAttachment", requestId, attachmentId, mutationId, file, key: API_KEY });
   return data.attachment;
 }
+export interface DocumentUpload { name: string; mimeType: string; size: number; data: string }
+export async function completeRequest(id: string, expectedRevision: number, documents: DocumentUpload[], mutationId: string): Promise<ChangeRequest> {
+  const data = await post<{ request: ChangeRequest }>({ action: "completeRequest", id, expectedRevision, documents, mutationId, key: API_KEY });
+  return data.request;
+}
 export async function fetchAttachment(requestId: string, attachmentId: string): Promise<{ name: string; blob: Blob }> {
   const data = await get<{ name: string; mimeType: string; data: string }>({ action: "fetchAttachment", requestId, attachmentId, key: API_KEY });
   return { name: data.name, blob: base64ToBlob(data.data, data.mimeType) };

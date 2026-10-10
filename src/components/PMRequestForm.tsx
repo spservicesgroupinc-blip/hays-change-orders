@@ -58,6 +58,7 @@ const STATUS_LABELS: Record<ChangeRequest["status"], string> = {
   in_review: "Estimator reviewing",
   needs_information: "More information needed",
   ready: "Change order ready",
+  completed: "Completed",
 };
 
 function TextField({

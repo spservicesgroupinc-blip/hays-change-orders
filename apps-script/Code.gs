@@ -231,6 +231,7 @@ function doPost(e) {
   if (body.action === "claimRequest") return guarded_(function () { return claimRequest_(body); });
   if (body.action === "transitionRequest") return guarded_(function () { return transitionRequest_(body); });
   if (body.action === "uploadAttachment") return guarded_(function () { return uploadAttachment_(body); });
+  if (body.action === "completeRequest") return guarded_(function () { return completeRequest_(body); });
   if (body.action === "convertLegacyRequest") return guarded_(function () { return convertLegacyRequest_(body); });
   if (body.action === "save") return save_(body.draft);
   if (body.action === "delete") return delete_(body.id);
@@ -539,7 +540,7 @@ function saveRequest_(body) {
       request.submittedAt = null; request.informationQuestion = "";
     } else {
       const previous = snapshot.request;
-      if (previous.status === "submitted" || previous.status === "ready") problem_("STATE", "Reopen or claim this request before editing it.");
+      if (previous.status === "submitted" || previous.status === "ready" || previous.status === "completed") problem_("STATE", "Reopen or claim this request before editing it.");
       if (request.status !== previous.status || request.estimatorName !== previous.estimatorName) problem_("STATE", "Use the claim or status action to change review state.");
       request.submittedAt = previous.submittedAt; request.informationQuestion = previous.informationQuestion; request.legacyDraftId = previous.legacyDraftId;
       request.attachments = request.attachments.map(function(attachment) { return attachmentFile_(row, attachment).attachment; });
@@ -580,9 +581,42 @@ function transitionRequest_(body) {
     return commitRequest_(request, row, snapshot, body.mutationId);
   });
 }
+function completeRequest_(body) {
+  if (!body.id || !body.mutationId) problem_("VALIDATION", "Request and mutation identifiers are required.");
+  if (!Array.isArray(body.documents) || !body.documents.length) problem_("VALIDATION", "Attach at least one final document before completing.");
+  checkMutation_(body);
+  return locked_(function () {
+    const row = requestRow_(body.id);
+    if (!row) problem_("NOT_FOUND", "Request not found.");
+    const snapshot = readSnapshot_(row);
+    if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request });
+    revisionCheck_(row, body.expectedRevision);
+    const request = snapshot.request;
+    if (request.status !== "ready") problem_("STATE", "Only a ready request can be completed.");
+    const folder = DriveApp.getFolderById(String(row.values[RC.FOLDER]));
+    const documents = body.documents.map(function (doc, index) {
+      const info = doc || {};
+      const label = "Document " + (index + 1);
+      if (typeof info.name !== "string" || !info.name.trim() || info.mimeType !== "application/pdf" || !Number.isInteger(info.size) || info.size <= 0 || info.size > 15 * 1024 * 1024 || typeof info.data !== "string" || info.data.length > 21 * 1024 * 1024) problem_("VALIDATION", label + " is incomplete or too large.");
+      let bytes; try { bytes = Utilities.base64Decode(info.data); } catch (error) { problem_("UPLOAD_FAILED", label + " could not be decoded."); }
+      if (bytes.length !== info.size) problem_("VALIDATION", label + " size does not match its content.");
+      const b = bytes.map(function (value) { return value & 255; });
+      if (!(b[0] === 37 && b[1] === 80 && b[2] === 68 && b[3] === 70 && b[4] === 45)) problem_("VALIDATION", label + " is not a valid PDF.");
+      const attachmentId = Utilities.getUuid();
+      const name = String(info.name).split(/[\\/]/).pop().slice(0, 200);
+      const file = folder.createFile(Utilities.newBlob(bytes, "application/pdf", "attachment-" + attachmentId));
+      const attachment = { id: attachmentId, kind: "document", name: name, mimeType: "application/pdf", size: bytes.length, driveFileId: file.getId() };
+      file.setDescription(JSON.stringify({ requestId: body.id, mutationId: body.mutationId, attachment: attachment }));
+      return attachment;
+    });
+    request.attachments = (request.attachments || []).concat(documents);
+    request.status = "completed";
+    return commitRequest_(request, row, snapshot, body.mutationId);
+  });
+}
 function uploadAttachment_(body) {
   const info = body.file;
-  if (!body.requestId || !body.attachmentId || !body.mutationId || !info || ["estimate", "quote", "photo"].indexOf(info.kind) < 0) problem_("VALIDATION", "Attachment details are incomplete.");
+  if (!body.requestId || !body.attachmentId || !body.mutationId || !info || ["estimate", "quote", "photo", "document"].indexOf(info.kind) < 0) problem_("VALIDATION", "Attachment details are incomplete.");
   const allowed = info.kind === "photo" ? ["image/jpeg", "image/png", "image/webp"] : ["application/pdf"];
   if (allowed.indexOf(info.mimeType) < 0 || !Number.isInteger(info.size) || info.size <= 0 || info.size > 15 * 1024 * 1024 || typeof info.data !== "string" || info.data.length > 21 * 1024 * 1024) problem_("VALIDATION", "Choose a supported file smaller than 15 MB.");
   let bytes; try { bytes = Utilities.base64Decode(info.data); } catch (error) { problem_("UPLOAD_FAILED", "The file could not be decoded. Retry the upload."); }
@@ -600,7 +634,7 @@ function uploadAttachment_(body) {
       return json_({ ok: true, attachment: metadata.attachment });
     }
     const request = readSnapshot_(row).request;
-    if (request.status === "submitted" || request.status === "ready") problem_("STATE", "Reopen the request before uploading attachments.");
+    if (request.status === "submitted" || request.status === "ready" || request.status === "completed") problem_("STATE", "Reopen the request before uploading attachments.");
     const name = String(info.name || "attachment").split(/[\\/]/).pop().slice(0, 200);
     const file = folder.createFile(Utilities.newBlob(bytes, info.mimeType, filename));
     const attachment = { id: String(body.attachmentId), kind: info.kind, name: name, mimeType: info.mimeType, size: bytes.length, driveFileId: file.getId() };

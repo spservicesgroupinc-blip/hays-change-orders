@@ -1,6 +1,7 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import {
   CheckCircle2,
+  FileCheck2,
   FileText,
   MessageSquare,
   Plus,
@@ -34,6 +35,7 @@ interface Props {
   onChange: (next: ChangeRequest) => void;
   onAskInformation: (question: string) => void;
   onReady: () => void;
+  onComplete: () => void;
   onPreviewAttachment: (attachment: RequestAttachment) => void;
   busy: boolean;
 }
@@ -123,6 +125,7 @@ export default function EstimatorWorkspace({
   onChange,
   onAskInformation,
   onReady,
+  onComplete,
   onPreviewAttachment,
   busy,
 }: Props) {
@@ -135,6 +138,9 @@ export default function EstimatorWorkspace({
     [request.estimate],
   );
   const draft = useMemo(() => requestToDraft(request), [request]);
+  const documentAttachments = request.attachments.filter(
+    (attachment) => attachment.kind === "document",
+  );
   const customerScope = request.customerScopeEdited
     ? request.customerScope
     : generatedScope(request.pricedItems);
@@ -283,21 +289,68 @@ export default function EstimatorWorkspace({
           </p>
         </div>
         <span className="ew-status">
-          {request.status === "ready"
-            ? "Ready for customer"
-            : request.status === "in_review"
-              ? `In review · ${request.estimatorName || "Estimator"}`
-              : "Read-only request"}
+          {request.status === "completed"
+            ? "Completed"
+            : request.status === "ready"
+              ? "Ready for customer"
+              : request.status === "in_review"
+                ? `In review · ${request.estimatorName || "Estimator"}`
+                : "Read-only request"}
         </span>
       </div>
-      {request.status === "ready" ? (
+      {request.status === "ready" || request.status === "completed" ? (
         <section className="ew-panel">
           <Suspense fallback={<p>Preparing customer documents…</p>}>
             <Preview draft={draft} />
           </Suspense>
         </section>
       ) : null}
-      {!editable && request.status !== "ready" ? (
+      {request.status === "ready" ? (
+        <section className="ew-panel ew-complete-panel">
+          <div>
+            <h3>Complete the change order</h3>
+            <p>
+              Store the final customer packet on this record and mark it
+              completed. Completed orders become read-only.
+            </p>
+          </div>
+          <button
+            className="button primary large"
+            disabled={busy}
+            onClick={onComplete}
+          >
+            <FileCheck2 size={17} />
+            Store documents &amp; complete
+          </button>
+        </section>
+      ) : null}
+      {request.status === "completed" ? (
+        <>
+          <div className="notice">
+            <strong>This change order is complete.</strong> Final customer
+            documents are stored below and this record is read-only.
+          </div>
+          {documentAttachments.length ? (
+            <section className="ew-panel">
+              <h3>Final documents</h3>
+              <p>The stored customer packet for this change order.</p>
+              <div className="ew-attachment-list">
+                {documentAttachments.map((attachment) => (
+                  <button
+                    className="button small"
+                    key={attachment.id}
+                    onClick={() => onPreviewAttachment(attachment)}
+                  >
+                    <FileText size={14} />
+                    {attachment.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
+      {!editable && request.status !== "ready" && request.status !== "completed" ? (
         <div className="notice">
           Claim this request to edit scope and pricing. Requests waiting for PM
           information remain read-only.
@@ -1021,7 +1074,7 @@ export default function EstimatorWorkspace({
             </div>
             {!request.attachments.length ? <p>No files attached.</p> : null}
           </section>
-          {request.status !== "ready" ? (
+          {request.status !== "ready" && request.status !== "completed" ? (
             <>
               <section className="ew-panel">
                 <h3>Ask the PM for information</h3>

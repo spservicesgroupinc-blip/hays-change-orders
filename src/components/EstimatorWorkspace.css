@@ -55,6 +55,27 @@
   margin-bottom: 12px;
   font-size: 13px;
 }
+.ew-complete-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-color: #f0c9c9;
+  background: linear-gradient(180deg, #fff 0%, #fff7f7 100%);
+  margin-bottom: 22px;
+}
+.ew-complete-panel h3 {
+  margin-bottom: 4px;
+}
+.ew-complete-panel p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .ew-complete-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 .ew-area-heading {
   display: flex;
   justify-content: space-between;
