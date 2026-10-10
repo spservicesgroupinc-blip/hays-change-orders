@@ -1,6 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, FileText, Mic, MicOff, Pencil, Send, X } from "lucide-react";
-import { newId, type ChangeRequest, type JobEntry } from "../types";
+import {
+  newId,
+  type ChangeRequest,
+  type JobEntry,
+  type RequestAttachment,
+} from "../types";
 import { createRequest, createRequestedChange } from "../services/requests";
 import {
   blobToBase64,
@@ -337,6 +342,21 @@ export default function SimpleRequest(
     }
   };
 
+  // One stable upload identity per photo, plus one for the PDF. The Apps Script
+  // upload endpoint hands back the file it already holds when it sees the same
+  // (attachmentId, mutationId) pair again, so retrying a partial failure cannot
+  // leave a second copy of the same photo in Drive.
+  const uploadIdentity = useRef(
+    new Map<string, { attachmentId: string; mutationId: string }>(),
+  );
+  const uploadIdentityFor = (key: string) => {
+    const existing = uploadIdentity.current.get(key);
+    if (existing) return existing;
+    const created = { attachmentId: newId(), mutationId: newId() };
+    uploadIdentity.current.set(key, created);
+    return created;
+  };
+
   const submit = async () => {
     if (busy) return;
     const customer = (selectedJob?.customer ?? typedCustomer).trim();
@@ -365,51 +385,69 @@ export default function SimpleRequest(
       });
       const saved = await saveRequest(request, prior?.revision ?? 0, newId());
       // Keep the saved request and its revision. A later failure retries against
-      // this same request instead of creating a duplicate, and re-sending the
-      // whole attachment set is acceptable because uploads are idempotent
-      // server-side.
+      // this same request instead of creating a duplicate.
       savedAttempt.current = { request: saved, revision: saved.revision };
       const total = photos.length + (pdf ? 1 : 0);
       let done = 0;
+      const uploaded: RequestAttachment[] = [];
       for (const photo of photos) {
         done += 1;
         setProgress(`Uploading photo ${done} of ${total}…`);
         const blob = photo.blob;
-        await uploadAttachment(
-          saved.id,
-          {
-            name: photo.file.name,
-            mimeType: blob.type || photo.file.type || "image/jpeg",
-            size: blob.size,
-            kind: "photo",
-            data: await blobToBase64(blob),
-          },
-          newId(),
-          newId(),
+        const identity = uploadIdentityFor(photo.id);
+        uploaded.push(
+          await uploadAttachment(
+            saved.id,
+            {
+              name: photo.file.name,
+              mimeType: blob.type || photo.file.type || "image/jpeg",
+              size: blob.size,
+              kind: "photo",
+              data: await blobToBase64(blob),
+            },
+            identity.attachmentId,
+            identity.mutationId,
+          ),
         );
       }
       if (pdf) {
         done += 1;
         setProgress(`Uploading ${pdf.name}…`);
-        await uploadAttachment(
-          saved.id,
-          {
-            name: pdf.name,
-            // A PM attachment is a document, never an "estimate": attaching one
-            // must not trigger estimate extraction.
-            mimeType: pdf.type || "application/pdf",
-            size: pdf.size,
-            kind: "document",
-            data: await blobToBase64(pdf),
-          },
-          newId(),
+        const identity = uploadIdentityFor("pdf");
+        uploaded.push(
+          await uploadAttachment(
+            saved.id,
+            {
+              name: pdf.name,
+              // A PM attachment is a document, never an "estimate": attaching one
+              // must not trigger estimate extraction.
+              mimeType: pdf.type || "application/pdf",
+              size: pdf.size,
+              kind: "document",
+              data: await blobToBase64(pdf),
+            },
+            identity.attachmentId,
+            identity.mutationId,
+          ),
+        );
+      }
+      // The upload endpoint stores files in Drive but never edits the request, so
+      // the rows it hands back have to be saved onto the request before it is
+      // submitted — otherwise the estimator would open a request with no photos.
+      let current = saved;
+      if (uploaded.length) {
+        setProgress("Attaching the files…");
+        current = await saveRequest(
+          { ...request, attachments: uploaded },
+          saved.revision,
           newId(),
         );
+        savedAttempt.current = { request: current, revision: current.revision };
       }
       setProgress("Submitting to estimating…");
       await transitionRequest(
-        saved.id,
-        saved.revision,
+        current.id,
+        current.revision,
         "submitted",
         "",
         newId(),
