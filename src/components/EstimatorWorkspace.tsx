@@ -294,12 +294,7 @@ export default function EstimatorWorkspace({
     <div className="estimator-workspace">
       <div className="ew-intro">
         <div>
-          <span className="ew-eyebrow">ESTIMATOR WORKSPACE</span>
-          <h2>Turn the field request into a customer change order.</h2>
-          <p>
-            Review the PM's scope and quoted costs, then enter and approve the
-            customer pricing.
-          </p>
+          <h2>Estimator workspace</h2>
         </div>
         <span className="ew-status">
           {request.status === "completed"

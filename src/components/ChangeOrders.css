@@ -16,9 +16,6 @@
 .orders-title h1 {
   font-size: 30px;
 }
-.orders-title p {
-  max-width: 620px;
-}
 .orders-toolbar {
   display: flex;
   align-items: center;

@@ -50,12 +50,7 @@ export default function ChangeOrders({ requests, onOpen }: Props) {
     <div className="orders-page">
       <header className="orders-head">
         <div className="orders-title">
-          <span className="eyebrow">CHANGE ORDERS</span>
           <h1>Stored change orders</h1>
-          <p>
-            Review completed orders and their final documents, or reopen work
-            still in the active queue.
-          </p>
         </div>
       </header>
 

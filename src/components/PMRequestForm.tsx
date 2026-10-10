@@ -970,12 +970,7 @@ export default function PMRequestForm({
       }}
     >
       <div className="pm-intro">
-        <span className="pm-eyebrow">PROJECT MANAGER REQUEST</span>
-        <h1>Tell estimating what changed.</h1>
-        <p>
-          Describe the work and include what you know. Your estimator will
-          review the scope, set pricing, and prepare the change order.
-        </p>
+        <h1>Change request</h1>
         <span className="pm-caption">
           Every field is optional — send whatever you know. Drafts save as you
           type.

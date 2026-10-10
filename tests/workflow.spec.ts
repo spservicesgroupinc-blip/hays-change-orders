@@ -566,7 +566,7 @@ test("remote storage failures stay visible and keep the unsaved workspace open",
     "Retry saving before returning to drafts",
   );
   await expect(
-    page.getByRole("heading", { name: "Start with the estimate." }),
+    page.getByRole("heading", { name: "Upload estimate", exact: true }),
   ).toBeVisible();
 });
 test("PM submits a text-only request and an estimator prices it to a ready packet", async ({
@@ -577,7 +577,7 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
   await page.goto("/");
   await page.getByRole("button", { name: "New request", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toBeVisible();
   await page.getByLabel("Job number", { exact: true }).fill("FW-REQ-001");
   await page
@@ -618,7 +618,7 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "Turn the field request into a customer change order.",
+      name: "Estimator workspace",
     }),
   ).toBeVisible();
   await page
@@ -693,7 +693,7 @@ test("an estimator can mark ready and generate with no data entered at all", asy
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "Turn the field request into a customer change order.",
+      name: "Estimator workspace",
     }),
   ).toBeVisible();
   // The review is never locked and never lists blockers.
@@ -759,12 +759,12 @@ test("a request sent back for information links the PM straight into the change 
     "Which vanity model is approved?",
   );
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toHaveCount(0);
   // The project manager gets the notice as a link into the details.
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toBeVisible();
   const notice = page.locator(".pm-information-notice");
   await expect(notice).toContainText("needs more information");
@@ -784,7 +784,7 @@ test("a request sent back for information links the PM straight into the change 
   await row.click();
   await expect(page.locator(".pm-information-notice")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toBeVisible();
   expect(runtimeErrors).toEqual([]);
 });
@@ -967,7 +967,7 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "Turn the field request into a customer change order.",
+      name: "Estimator workspace",
     }),
   ).toBeVisible();
   await expect(
@@ -1055,7 +1055,7 @@ test("the imported Estimate Amount reaches a change order typed by hand", async 
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "Turn the field request into a customer change order.",
+      name: "Estimator workspace",
     }),
   ).toBeVisible();
   // The estimator never types the contract amount: it arrived from the import.

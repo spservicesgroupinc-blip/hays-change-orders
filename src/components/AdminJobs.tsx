@@ -74,13 +74,7 @@ export default function AdminJobs({ jobs, onImported }: AdminJobsProps) {
     <div className="shell-request admin-jobs">
       <div className="admin-jobs-head">
         <div>
-          <span className="pm-eyebrow">ADMIN / JOB DIRECTORY</span>
           <h1>Manage the job list</h1>
-          <p>
-            Import the current jobs from the Dash JobSummaryReport. Project
-            managers pick a job from the dropdown and the request fills in
-            automatically.
-          </p>
         </div>
         <div className="admin-jobs-count">
           <ListChecks size={20} />

@@ -11,24 +11,10 @@
   max-width: 740px;
   margin: 4px 0 32px;
 }
-.pm-eyebrow {
-  display: block;
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 1.6px;
-  color: #b91c1c;
-  margin-bottom: 12px;
-}
 .pm-intro h1 {
   font-size: clamp(27px, 3vw, 35px);
   letter-spacing: -1.05px;
   line-height: 1.22;
-  margin-bottom: 12px;
-}
-.pm-intro p {
-  font-size: 15px;
-  color: #5e6876;
-  line-height: 1.65;
   margin-bottom: 12px;
 }
 .pm-caption {
@@ -735,9 +721,6 @@
   }
   .pm-intro {
     margin-bottom: 23px;
-  }
-  .pm-intro p {
-    font-size: 14px;
   }
   .pm-section {
     padding: 20px;

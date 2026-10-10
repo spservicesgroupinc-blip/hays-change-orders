@@ -616,19 +616,9 @@ export default function LegacyWorkspace({
       ) : null}
       {!draft ? (
         <main className="home">
-          <div className="eyebrow">PROJECT MANAGEMENT / DOCUMENTS</div>
           <div className="home-title">
             <div>
-              <h1>
-                A clear record of
-                <br />
-                every change.
-              </h1>
-              <p>
-                From the estimate to the signature.
-                <br className="mobile-break" /> Create a change order in a few
-                simple steps.
-              </p>
+              <h1>Legacy change orders</h1>
             </div>
             <button className="button primary large" onClick={newDraft}>
               <Plus size={20} />
@@ -838,16 +828,7 @@ export default function LegacyWorkspace({
               <div className="eyebrow">
                 STEP {String(draft.step + 1).padStart(2, "0")} OF 04
               </div>
-              <h1>
-                {
-                  [
-                    "Start with the estimate.",
-                    "What’s changing?",
-                    "Make it official.",
-                    "Your paperwork, ready.",
-                  ][draft.step]
-                }
-              </h1>
+              <h1>{STEPS[draft.step]}</h1>
               <p>
                 {
                   [

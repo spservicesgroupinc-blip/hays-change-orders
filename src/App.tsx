@@ -1079,12 +1079,7 @@ export default function App() {
         <main className="home shell-home" ref={mainRef} tabIndex={-1}>
           <header className="ops-head">
             <div className="ops-head-text">
-              <span className="eyebrow">Operations dashboard</span>
               <h1>Change orders</h1>
-              <p>
-                Project managers log what changed on the job. Estimating
-                confirms pricing and prepares the customer documents.
-              </p>
             </div>
             <div className="ops-head-actions">
               <button className="button primary large" onClick={newRequest}>

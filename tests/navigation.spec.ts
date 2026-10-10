@@ -129,7 +129,7 @@ test("the back gesture returns to the request list instead of leaving the app", 
   await page.goto("/");
   await page.getByRole("button", { name: "New request", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toBeVisible();
   expect(new URL(page.url()).hash).toMatch(/^#\/requests\//);
 
@@ -148,7 +148,7 @@ test("the header stays on screen at the bottom of a long form", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "New request", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Tell estimating what changed." }),
+    page.getByRole("heading", { name: "Change request", exact: true }),
   ).toBeVisible();
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

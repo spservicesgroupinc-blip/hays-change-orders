@@ -207,14 +207,6 @@ svg {
   line-height: 1.08;
   letter-spacing: -2px;
 }
-.home-title p {
-  margin-top: 18px;
-  font-size: 15px;
-  line-height: 1.7;
-}
-.mobile-break {
-  display: none;
-}
 .home-workflow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -359,12 +351,6 @@ svg {
   font-size: 34px;
   letter-spacing: -1.3px;
   margin-top: 10px;
-}
-.ops-head p {
-  margin-top: 9px;
-  font-size: 14px;
-  line-height: 1.6;
-  max-width: 64ch;
 }
 .ops-head-actions {
   display: flex;
@@ -1455,9 +1441,6 @@ svg {
   .ops-head h1 {
     font-size: 27px;
   }
-  .ops-head p {
-    font-size: 13px;
-  }
   .ops-head-actions {
     margin-top: 18px;
   }
@@ -1492,9 +1475,6 @@ svg {
   .home-title > .button {
     margin-top: 24px;
     width: 100%;
-  }
-  .home-title p {
-    font-size: 13px;
   }
   .home-workflow {
     grid-template-columns: repeat(2, 1fr);
