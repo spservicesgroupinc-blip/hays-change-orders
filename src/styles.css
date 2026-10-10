@@ -886,6 +886,11 @@ svg {
   background: #f6f7f9;
   color: #798391;
 }
+.notice.success {
+  background: #eefbf2;
+  color: #1f7a45;
+  border: 1px solid #cdeed8;
+}
 .notice .icon-button {
   margin-left: auto;
 }

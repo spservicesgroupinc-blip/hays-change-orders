@@ -72,6 +72,7 @@ import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import ChangeOrders from "./components/ChangeOrders";
 import DashNoteButton from "./components/DashNoteButton";
 import AdminJobs from "./components/AdminJobs";
+import SimpleRequest from "./components/SimpleRequest";
 import LegacyWorkspace from "./LegacyWorkspace";
 import PdfViewer from "./components/PdfViewer";
 import InstallApp from "./components/InstallApp";
@@ -270,6 +271,8 @@ export default function App() {
   const [homeStatus, setHomeStatus] = useState<StatKey>("all");
   const [legacySearch, setLegacySearch] = useState("");
   const [converting, setConverting] = useState("");
+  // Confirmation for the quick PM flow, shown on the dashboard it returns to.
+  const [homeNotice, setHomeNotice] = useState("");
 
   const [request, setRequest] = useState<ChangeRequest | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">(
@@ -362,6 +365,8 @@ export default function App() {
         setPreview(null);
         previewEntry.current = false;
       }
+      // A fresh visit to the quick form clears the last confirmation.
+      if (next.kind === "simple") setHomeNotice("");
       if (next.kind === "home") void refresh();
     },
     [closeEditor, flush, navigateTo, refresh],
@@ -854,6 +859,15 @@ export default function App() {
     }
   }
 
+  /**
+   * The quick PM form saves, uploads and submits its own request, so there is
+   * no editor to open here: land back on the dashboard with a confirmation.
+   */
+  function quickRequestDone(message: string) {
+    setHomeNotice(message);
+    goHome();
+  }
+
   const statusCounts = useMemo(() => {
     const counts: Record<RequestStatus, number> = {
       draft: 0,
@@ -976,7 +990,11 @@ export default function App() {
           </button>
         </div>
       ) : null}
-      {view.kind === "orders" ? (
+      {view.kind === "simple" ? (
+        <main className="shell-request" ref={mainRef} tabIndex={-1}>
+          <SimpleRequest jobs={jobs} onDone={quickRequestDone} />
+        </main>
+      ) : view.kind === "orders" ? (
         <main className="shell-page" ref={mainRef} tabIndex={-1}>
           <ChangeOrders
             requests={requests}
@@ -1088,6 +1106,20 @@ export default function App() {
               </button>
             </div>
           </header>
+
+          {homeNotice ? (
+            <div className="notice success" role="status">
+              <CheckCircle2 size={18} />
+              <span>{homeNotice}</span>
+              <button
+                className="icon-button"
+                aria-label="Dismiss confirmation"
+                onClick={() => setHomeNotice("")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : null}
 
           <section className="stat-grid" aria-label="Request status overview">
             {STAT_TILES.map(({ key, label, tone, icon }) => {

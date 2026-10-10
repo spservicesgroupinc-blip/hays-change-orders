@@ -11,10 +11,11 @@ export type View =
   | { kind: "request"; id: string }
   | { kind: "legacy"; startNew: boolean }
   | { kind: "jobs" }
-  | { kind: "orders" };
+  | { kind: "orders" }
+  | { kind: "simple" };
 
-/** The four sections the app header can jump between. */
-export type NavDestination = "home" | "orders" | "jobs" | "legacy";
+/** The five sections the app header can jump between. */
+export type NavDestination = "home" | "orders" | "jobs" | "legacy" | "simple";
 
 export const HOME: View = { kind: "home" };
 
@@ -28,6 +29,8 @@ export function destinationToView(destination: NavDestination): View {
       return { kind: "jobs" };
     case "legacy":
       return { kind: "legacy", startNew: false };
+    case "simple":
+      return { kind: "simple" };
     default:
       return HOME;
   }
@@ -46,6 +49,8 @@ export function viewToHash(view: View): string {
       // or reloading the editor restores the draft in progress instead of
       // silently creating an empty one.
       return "#/legacy";
+    case "simple":
+      return "#/simple";
     default:
       return "#/";
   }
@@ -63,6 +68,8 @@ export function hashToView(hash: string): View | null {
       return { kind: "jobs" };
     case "legacy":
       return { kind: "legacy", startNew: false };
+    case "simple":
+      return { kind: "simple" };
     case "requests":
       return parts[1] ? { kind: "request", id: parts[1] } : null;
     default:
@@ -88,6 +95,8 @@ export function viewLabel(view: View): string {
       return "Jobs";
     case "legacy":
       return "Legacy editor";
+    case "simple":
+      return "Quick request";
     default:
       return "All requests";
   }
@@ -120,6 +129,8 @@ export function readStoredView(): View {
         return { kind: "jobs" };
       case "legacy":
         return { kind: "legacy", startNew: false };
+      case "simple":
+        return { kind: "simple" };
       default:
         return HOME;
     }
