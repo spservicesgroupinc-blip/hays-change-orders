@@ -133,6 +133,13 @@ export default function EstimatorWorkspace({
   const [question, setQuestion] = useState("");
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [searches, setSearches] = useState<Record<string, string>>({});
+  // The contract amount is prefilled from the job directory the admin imported
+  // (see the request form's job picker). Remember which request the estimator
+  // overrode, so the "from the import" hint is never claimed for a hand-entered
+  // amount and is restored when a different request is opened.
+  const [overriddenContractRequestId, setOverriddenContractRequestId] = useState<
+    string | null
+  >(null);
   const estimateMap = useMemo(
     () => new Map(request.estimate.map((item) => [item.id, item])),
     [request.estimate],
@@ -144,6 +151,16 @@ export default function EstimatorWorkspace({
   const customerScope = request.customerScopeEdited
     ? request.customerScope
     : generatedScope(request.pricedItems);
+  // The PM's picked job carries the amount in the report's Estimate Amount
+  // column, which is the customer's original contract amount. Say where it came
+  // from until it is overridden, and flag a blank amount because the customer
+  // document prints it as $0.00.
+  const importedContractAmount = request.job.originalContract.trim();
+  const contractAmountHint: ReactNode = !importedContractAmount
+    ? "A blank amount prints as $0.00 on the customer document. Enter the signed contract amount."
+    : overriddenContractRequestId === request.id
+      ? undefined
+      : "From the job directory import (Estimate Amount column)";
   // The packet shows missing or unparseable amounts as $0.00, so the sidebar
   // mirrors that instead of hiding the totals until every value is valid.
   const summary = safeTotals(draft);
@@ -990,8 +1007,17 @@ export default function EstimatorWorkspace({
                     key={key}
                     label={label}
                     value={request.job[key]}
-                    onChange={(value) => updateJob(key, value)}
+                    onChange={(value) => {
+                      if (key === "originalContract")
+                        setOverriddenContractRequestId(request.id);
+                      updateJob(key, value);
+                    }}
                     type={key === "date" ? "date" : "text"}
+                    hint={
+                      key === "originalContract"
+                        ? contractAmountHint
+                        : undefined
+                    }
                   />
                 ))}
               </div>

@@ -32,6 +32,7 @@ import {
   type RequestSummary,
 } from "./types";
 import { createRequest, requestToDraft } from "./services/requests";
+import { applyDirectoryContractAmountForPmRequest } from "./services/jobDirectory";
 import {
   blobToBase64,
   claimRequest,
@@ -265,6 +266,11 @@ export default function App() {
   const [requests, setRequests] = useState<RequestSummary[]>([]);
   const [legacyDrafts, setLegacyDrafts] = useState<DraftSummary[]>([]);
   const [jobs, setJobs] = useState<JobEntry[]>([]);
+  // refresh() loads the directory asynchronously, so an editor that opens
+  // before the jobs arrive reads the latest list through this ref instead of a
+  // stale closure.
+  const jobsRef = useRef<JobEntry[]>([]);
+  jobsRef.current = jobs;
   const [ready, setReady] = useState(false);
   const [bootSlow, setBootSlow] = useState(false);
   const [listError, setListError] = useState("");
@@ -339,6 +345,27 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [ready]);
 
+  // The directory arrives after the request list, so a request opened from the
+  // queue (or restored on boot) may have been opened before its job's "Estimate
+  // Amount" was known. Fill it in once the jobs list lands. Idempotent: the
+  // helper returns the same request when nothing changed, and only PM-stage
+  // requests are considered, so this never edits a completed/locked order.
+  useEffect(() => {
+    applyDirectoryAmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs]);
+
+  // A PM who types the job number by hand never opens the picker, so the amount
+  // has to arrive while the form is open: re-apply whenever the open request or
+  // its job number changes. The effect settles after one application — neither
+  // the request id nor the job number changes when the amount is patched in, and
+  // the jobs list keeps its identity. Blank or partial job numbers match
+  // nothing, so a half-typed number never edits the form.
+  useEffect(() => {
+    applyDirectoryAmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.id, request?.job.jobNumber]);
+
   function attachEditor(editor: RequestEditor) {
     editorRef.current = editor;
     editor.onUpdate = () => {
@@ -361,6 +388,10 @@ export default function App() {
     setBusy("");
     setClaimName("");
     setView({ kind: "request", id: data.id });
+    // Every editor open funnels through here — a request loaded from the queue
+    // (openRequestById, including the request restored on boot) and a converted
+    // legacy draft both pick up the directory's original contract amount here.
+    applyDirectoryAmount();
   }
   async function openRequestById(id: string) {
     setBusy("Opening request…");
@@ -406,6 +437,22 @@ export default function App() {
     if (!editor) return;
     editor.edit(fn(editor.current));
     scheduleFlush();
+  }
+  // The customer's original contract is the directory's "Estimate Amount". A
+  // request created without the picker — typed job number, older request,
+  // converted legacy draft — gets it from here, through the same editor update
+  // path as a keystroke so normal autosave persists it. When the helper returns
+  // the request unchanged (already filled, blank directory amount, or a
+  // submitted/completed request) nothing is edited and nothing is saved.
+  function applyDirectoryAmount() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const next = applyDirectoryContractAmountForPmRequest(
+      editor.current,
+      jobsRef.current,
+    );
+    if (next === editor.current) return;
+    patch(() => next);
   }
 
   const goHome = async () => {

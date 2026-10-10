@@ -99,6 +99,9 @@ export interface ChangeRequest {
   customerScopeEdited: boolean;
   customerScopeConfirmed: boolean;
   contractConfirmed: boolean;
+  // Job directory row this request's job number was matched to, so the
+  // original contract amount can be traced back to the uploaded report.
+  jobDirectoryId?: string;
   legacyDraftId?: string;
 }
 export interface RequestSummary {
@@ -151,6 +154,10 @@ export interface JobEntry {
   status: string;
   customerPhone: string;
   customerEmail: string;
+  // Original contract amount from the report, normalized to the app's
+  // canonical decimal string (e.g. "167045.81"); "" when the export carries no
+  // amount for the job.
+  contractAmount: string;
   active: boolean;
   updatedAt: string;
 }

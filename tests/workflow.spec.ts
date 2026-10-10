@@ -887,15 +887,28 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
     page.getByRole("heading", { name: "Manage the job list", exact: true }),
   ).toBeVisible();
   const csv = [
-    "Status,Job Number,Customer,Customer Main Phone,Customer Email,Job Address,Loss City,Loss State,Loss ZIP,Estimator,ForePerson",
-    "Work in Progress,F-26-0366-R,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Russell Shive,Lance Stanley",
-    "Work in Progress,F-26-0366-P,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Angela Tuddy,Tarreck ElBarassi",
+    "Status,Job Number,Customer,Customer Main Phone,Customer Email,Job Address,Loss City,Loss State,Loss ZIP,Estimator,ForePerson,Estimate Amount",
+    'Work in Progress,F-26-0366-R,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Russell Shive,Lance Stanley,"$167,045.81"',
+    "Work in Progress,F-26-0366-P,York Tori,260-580-0110,sportyhd13@hotmail.com,1825 Sprunger St.,Fort Wayne,IN,46808,Angela Tuddy,Tarreck ElBarassi,98000",
   ].join("\n");
   await page.getByLabel("Paste job report CSV").fill(csv);
   await page.getByRole("button", { name: "Preview jobs", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "2 jobs ready to import", exact: true }),
   ).toBeVisible();
+  // The admin sees the amount the upload produced, normalized (no "$" or
+  // thousands separators) so a mis-read column cannot slip through unnoticed.
+  await expect(
+    page.getByRole("columnheader", { name: "Estimate amount", exact: true }),
+  ).toBeVisible();
+  const importedRow = page.locator(".admin-sample tbody tr", {
+    hasText: "F-26-0366-R",
+  });
+  await expect(importedRow).toContainText("Lance Stanley");
+  await expect(importedRow).toContainText("167045.81");
+  await expect(
+    page.locator(".admin-sample tbody tr", { hasText: "F-26-0366-P" }),
+  ).toContainText("98000");
   await page
     .getByRole("button", { name: "Import 2 jobs", exact: true })
     .click();
@@ -921,6 +934,135 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
   await expect(page.getByLabel("Project manager", { exact: true })).toHaveValue(
     "Lance Stanley",
   );
+  // The PM form shows where the amount came from, already normalized, and the
+  // user never types it.
+  await expect(page.locator(".pm-contract-amount")).toContainText("167045.81");
+  // Follow the request through to estimating without ever typing the contract
+  // amount: the picked job's imported amount must already be on the workspace.
+  await page
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
+    .click();
+  await page.getByLabel("Room / work area", { exact: true }).fill("Kitchen");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Replace the damaged lower cabinets.");
+  await page
+    .getByRole("textbox", { name: "Why is this change needed?" })
+    .fill("Water damage found after demo.");
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Claim this request", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "All requests", exact: true }).click();
+  await expect(page.locator(".request-row")).toHaveCount(1);
+  await page.locator(".request-row").click();
+  await page.getByLabel("Estimator name", { exact: true }).fill("QA Estimator");
+  await page
+    .getByRole("button", { name: "Claim this request", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Turn the field request into a customer change order.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Original contract amount", { exact: true }),
+  ).toHaveValue("167045.81");
+  await expect(page.getByText("From the job directory import")).toBeVisible();
+  // A job number typed by hand — the picker never opened — still receives the
+  // uploaded amount, so every change order for that job carries the contract.
+  await page.getByRole("button", { name: "All requests", exact: true }).click();
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await page.getByLabel("Job number", { exact: true }).fill("F-26-0366-P");
+  await expect(page.locator(".pm-contract-amount")).toContainText("98000");
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("the imported Estimate Amount reaches a change order typed by hand", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  // The admin uploads the Dash export; its "Estimate Amount" column is the
+  // customer's original contract for the job.
+  await page.getByRole("button", { name: "Jobs", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Manage the job list", exact: true }),
+  ).toBeVisible();
+  const csv = [
+    "Status,Job Number,Customer,Customer Main Phone,Customer Email,Job Address,Loss City,Loss State,Loss ZIP,Estimator,ForePerson,Estimate Amount",
+    'Work in Progress,F-26-0401-R,Harper Quinn,260-580-0199,hquinn@example.com,88 Riverbend Dr.,Fort Wayne,IN,46805,Russell Shive,Lance Stanley,"$84,200.75"',
+  ].join("\n");
+  await page.getByLabel("Paste job report CSV").fill(csv);
+  await page.getByRole("button", { name: "Preview jobs", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "1 job ready to import", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".admin-sample tbody tr", { hasText: "F-26-0401-R" }),
+  ).toContainText("84200.75");
+  await page.getByRole("button", { name: "Import 1 job", exact: true }).click();
+  await expect(page.getByText(/1 job imported/)).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to requests", exact: true })
+    .click();
+  // The PM creates the request by hand — the job picker is never opened.
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await expect(page.locator(".pm-job-results")).toHaveCount(0);
+  await page.getByLabel("Job number", { exact: true }).fill("F-26-0401-R");
+  await page
+    .getByLabel("Customer / project owner", { exact: true })
+    .fill("Harper Quinn");
+  await page
+    .getByLabel("Property address", { exact: true })
+    .fill("88 Riverbend Dr., Fort Wayne, IN 46805");
+  await page
+    .getByLabel("Project manager", { exact: true })
+    .fill("Lance Stanley");
+  // Typing the job number alone pulls the uploaded amount into the request.
+  await expect(page.locator(".pm-contract-amount")).toContainText("84200.75");
+  await page
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
+    .click();
+  await page.getByLabel("Room / work area", { exact: true }).fill("Bathroom");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Replace the vanity and flooring.");
+  await page
+    .getByRole("textbox", { name: "Why is this change needed?" })
+    .fill("Supply line leak behind the vanity.");
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Claim this request", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "All requests", exact: true }).click();
+  await expect(page.locator(".request-row")).toHaveCount(1);
+  await page.locator(".request-row").click();
+  await page.getByLabel("Estimator name", { exact: true }).fill("QA Estimator");
+  await page
+    .getByRole("button", { name: "Claim this request", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Turn the field request into a customer change order.",
+    }),
+  ).toBeVisible();
+  // The estimator never types the contract amount: it arrived from the import.
+  await expect(
+    page.getByLabel("Original contract amount", { exact: true }),
+  ).toHaveValue("84200.75");
+  await expect(page.getByText("From the job directory import")).toBeVisible();
   expect(runtimeErrors).toEqual([]);
 });
 

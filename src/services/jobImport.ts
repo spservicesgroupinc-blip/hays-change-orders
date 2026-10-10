@@ -27,6 +27,20 @@ const FIELD_HEADERS: Record<string, string[]> = {
   status: ["status"],
   customerPhone: ["customer main phone"],
   customerEmail: ["customer email"],
+  contractAmount: [
+    // The Dash export names this column "Estimate Amount"; it is the customer's
+    // original contract amount. The rest are fallbacks for other export shapes.
+    "estimate amount",
+    "total estimate amount",
+    "contract amount",
+    "original contract amount",
+    "original contract",
+    "contract price",
+    "contract total",
+    "total contract amount",
+    // Abbreviated export variant; the exact "estimate amount" header wins.
+    "est. amount",
+  ],
 };
 
 function normalizeHeader(value: string): string {
@@ -99,6 +113,42 @@ export function isActiveStatus(status: string): boolean {
   return ACTIVE_STATUSES.includes(status.trim().toLowerCase());
 }
 
+// Money cells in the report arrive as text: "$167,045.81", "(1,234.00)" for a
+// credit, "1234.00-", blank, or the occasional junk value. Normalize them to the
+// canonical decimal string the pricing math consumes (plain digits, at most one
+// ".", no "$", commas, spaces or grouping) so callers can feed the result
+// straight into pricing.ts cents()/validDecimal(). Unparseable cells return ""
+// and never "NaN"/"Infinity"/an exponent, so the caller can warn instead of
+// rendering a broken amount.
+export function parseMoney(value: string): string {
+  let text = String(value ?? "").trim();
+  if (!text) return "";
+  let negative = false;
+  // Accounting parentheses mark a credit: (1,234.00) -> -1234.00.
+  const parenthesized = /^\((.*)\)$/.exec(text);
+  if (parenthesized) {
+    negative = true;
+    text = parenthesized[1];
+  }
+  text = text.replace(/[$,\s]/g, "");
+  // The sign may be printed on either side of the digits ("-1234", "1234-").
+  if (text.endsWith("-")) {
+    negative = !negative;
+    text = text.slice(0, -1);
+  }
+  if (text.startsWith("-")) {
+    negative = !negative;
+    text = text.slice(1);
+  }
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return "";
+  // Strip leading zeros from the whole part; zero itself is "0" ("0.00" -> "0").
+  const whole = match[1].replace(/^0+/, "") || "0";
+  const fraction = match[2] ?? "";
+  if (whole === "0" && /^0*$/.test(fraction)) return "0";
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+}
+
 export function parseJobReport(
   text: string,
   now = new Date().toISOString(),
@@ -157,6 +207,11 @@ export function parseJobReport(
       );
     if (!address)
       warnings.push(`Row ${i + 1} (${jobNumber}): no property address.`);
+    const contractAmount = parseMoney(cell(row, "contractAmount"));
+    if (at.contractAmount >= 0 && !contractAmount)
+      warnings.push(
+        `Row ${i + 1} (${jobNumber}): no estimate amount (original contract).`,
+      );
     if (seen.has(jobNumber.toLowerCase()))
       warnings.push(`Row ${i + 1} (${jobNumber}): duplicate job number.`);
     seen.add(jobNumber.toLowerCase());
@@ -170,9 +225,16 @@ export function parseJobReport(
       status,
       customerPhone: cell(row, "customerPhone"),
       customerEmail: cell(row, "customerEmail"),
+      contractAmount,
       active: isActiveStatus(status),
       updatedAt: now,
     });
   }
+  // A report without an estimate-amount column gets one note instead of one
+  // warning per row; imports still go through so the admin keeps the directory.
+  if (at.contractAmount < 0)
+    warnings.push(
+      'Estimate amount: this export has no "Estimate Amount" column, so the original contract amount is not filled in.',
+    );
   return { jobs, warnings, total: jobs.length, skipped };
 }

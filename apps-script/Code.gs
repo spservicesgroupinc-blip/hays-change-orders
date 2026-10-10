@@ -303,7 +303,16 @@ function uploadPdf_(body) {
 }
 
 const REQUEST_HEADERS = ["id", "revision", "createdAt", "updatedAt", "status", "estimatorName", "customer", "jobNumber", "projectManager", "orderNumber", "address", "changesCount", "attachmentsCount", "dataFileId", "previousDataFileId", "folderId"];
-const JOB_HEADERS = ["id", "jobNumber", "customer", "address", "projectManager", "estimator", "status", "customerPhone", "customerEmail", "active", "updatedAt"];
+// contractAmount is appended last on purpose: a Jobs sheet deployed before the
+// column existed keeps every existing column aligned. jobsSheet_() backfills the
+// missing header cell instead of inserting or moving a column.
+const JOB_HEADERS = ["id", "jobNumber", "customer", "address", "projectManager", "estimator", "status", "customerPhone", "customerEmail", "active", "updatedAt", "contractAmount"];
+// Script property recording the JOB_HEADERS.length that was last verified (or
+// healed) against the Jobs sheet. It gates the one-time header check, so
+// listJobs / bootstrap read only the job rows instead of the header row on every
+// call. A future column addition changes the value and re-opens the check.
+const JOB_HEADERS_KEY = "JOBS_HEADERS_VERSION";
+const JC = { ID: 0, JOB: 1, CUSTOMER: 2, ADDRESS: 3, PM: 4, ESTIMATOR: 5, STATUS: 6, PHONE: 7, EMAIL: 8, ACTIVE: 9, UPDATED: 10, CONTRACT: 11 };
 const RC = { ID: 0, REVISION: 1, CREATED: 2, UPDATED: 3, STATUS: 4, ESTIMATOR: 5, CUSTOMER: 6, JOB: 7, PM: 8, ORDER: 9, ADDRESS: 10, CHANGES: 11, ATTACHMENTS: 12, DATA: 13, PREVIOUS: 14, FOLDER: 15 };
 function problem_(code, message, revision) { const error = new Error(message); error.code = code; error.currentRevision = revision; throw error; }
 function guarded_(fn) { try { return fn(); } catch (error) { return fail_(error.message || "The sync service is unavailable.", error.code, error.currentRevision); } }
@@ -325,12 +334,45 @@ function requestsSheet_() {
 }
 function jobsSheet_() {
   const ss = spreadsheet_();
-  let sheet = ss.getSheetByName("Jobs");
-  if (!sheet) { sheet = ss.insertSheet("Jobs"); sheet.appendRow(JOB_HEADERS); }
+  const sheet = ss.getSheetByName("Jobs");
+  if (!sheet) { const created = ss.insertSheet("Jobs"); created.appendRow(JOB_HEADERS); markJobHeaders_(); return created; }
+  if (jobHeadersVerified_()) return sheet;
+  healJobHeaders_(sheet);
   return sheet;
 }
+function jobHeadersVerified_() {
+  // One-time work per deployment: once JOB_HEADERS_KEY holds the current header
+  // count, every later listJobs / bootstrap call skips reading the header row.
+  // If the property read fails for any reason, fall back to checking the header.
+  try { return PropertiesService.getScriptProperties().getProperty(JOB_HEADERS_KEY) === String(JOB_HEADERS.length); }
+  catch (error) { return false; }
+}
+function markJobHeaders_() {
+  // Called only after the header row is known good (just created, healed, or
+  // already complete). A quota or lock failure here costs one repeated header
+  // check on the next call; the heal itself has already happened and listing
+  // jobs must never fail because the property could not be written.
+  try { PropertiesService.getScriptProperties().setProperty(JOB_HEADERS_KEY, String(JOB_HEADERS.length)); }
+  catch (error) {
+    // Fall back to re-checking the header on the next call.
+  }
+}
+function healJobHeaders_(sheet) {
+  // Self-healing migration for a Jobs sheet that predates contractAmount (or a
+  // blank Jobs tab): fill in only the empty header cells with their canonical
+  // names, so existing columns keep their position and no header or job row is
+  // ever cleared, renamed, reordered, or rewritten. Idempotent: once every
+  // header cell is filled this writes nothing. Gated by jobHeadersVerified_(),
+  // so it runs at most once per deployment; it is never reached for a sheet that
+  // was just created (that path returns above).
+  const header = sheet.getRange(1, 1, 1, JOB_HEADERS.length).getValues()[0];
+  let stale = false;
+  const healed = JOB_HEADERS.map(function (name, index) { const current = String(header[index] || ""); if (!current) stale = true; return current || name; });
+  if (stale) sheet.getRange(1, 1, 1, healed.length).setValues([healed]);
+  markJobHeaders_();
+}
 function jobRow_(v) {
-  return { id: String(v[0]), jobNumber: String(v[1] || ""), customer: String(v[2] || ""), address: String(v[3] || ""), projectManager: String(v[4] || ""), estimator: String(v[5] || ""), status: String(v[6] || ""), customerPhone: String(v[7] || ""), customerEmail: String(v[8] || ""), active: v[9] === true || String(v[9]).toLowerCase() === "true", updatedAt: String(v[10] || "") };
+  return { id: String(v[0]), jobNumber: String(v[1] || ""), customer: String(v[2] || ""), address: String(v[3] || ""), projectManager: String(v[4] || ""), estimator: String(v[5] || ""), status: String(v[6] || ""), customerPhone: String(v[7] || ""), customerEmail: String(v[8] || ""), active: v[9] === true || String(v[9]).toLowerCase() === "true", updatedAt: String(v[10] || ""), contractAmount: String(v[JC.CONTRACT] || "") };
 }
 function jobRows_() {
   const sheet = jobsSheet_(); const last = sheet.getLastRow();
@@ -346,7 +388,7 @@ function importJobs_(body) {
   const sheet = jobsSheet_();
   const now = new Date().toISOString();
   const values = body.jobs.map(function (job) {
-    return [String(job.id || ""), String(job.jobNumber || ""), String(job.customer || ""), String(job.address || ""), String(job.projectManager || ""), String(job.estimator || ""), String(job.status || ""), String(job.customerPhone || ""), String(job.customerEmail || ""), Boolean(job.active), String(job.updatedAt || now)];
+    return [String(job.id || ""), String(job.jobNumber || ""), String(job.customer || ""), String(job.address || ""), String(job.projectManager || ""), String(job.estimator || ""), String(job.status || ""), String(job.customerPhone || ""), String(job.customerEmail || ""), Boolean(job.active), String(job.updatedAt || now), String(job.contractAmount || "")];
   });
   const last = sheet.getLastRow();
   if (last > 1) sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).clearContent();

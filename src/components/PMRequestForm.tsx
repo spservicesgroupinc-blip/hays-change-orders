@@ -1022,6 +1022,12 @@ export default function PMRequestForm({
                 customer: job.customer,
                 address: job.address,
                 projectManager: job.projectManager,
+                // The uploaded Dash job report also carries the customer's
+                // original contract amount. Only copy it when the report has
+                // one, so a blank entry never wipes a value already entered.
+                ...(job.contractAmount
+                  ? { originalContract: job.contractAmount }
+                  : {}),
               },
             })
           }
@@ -1064,6 +1070,13 @@ export default function PMRequestForm({
             }
           />
         </div>
+        {request.job.originalContract.trim() ? (
+          <p className="pm-caption pm-contract-amount">
+            Estimate amount from the uploaded job file:{" "}
+            <strong>{request.job.originalContract}</strong> — it carries into
+            this change order, so there is nothing to enter here.
+          </p>
+        ) : null}
         <details className="pm-optional-details">
           <summary>
             <Plus size={16} />

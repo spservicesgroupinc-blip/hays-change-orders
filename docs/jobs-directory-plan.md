@@ -60,11 +60,21 @@ export interface JobEntry {
   status: string;         // raw Dash status, e.g. "Work in Progress"
   customerPhone: string;  // display only, not copied into requests
   customerEmail: string;  // display only, not copied into requests
+  contractAmount: string; // customer's original contract amount, from the
+                          // report's "Estimate Amount" column; canonical
+                          // decimal ("167045.81"), "" when absent/junk
   active: boolean;        // derived from Status, see 3.6
   updatedAt: string;
 }
 ```
 
+- `contractAmount` is the amount the customer already contracted for: the Dash
+  export's **`Estimate Amount`** column, whose value **is** the customer's
+  original contract amount. It is normalized to a **canonical decimal string**
+  (`"$167,045.81"` → `"167045.81"`, `"(1,234.00)"` → `"-1234.00"`; `""` when the
+  export has no such column or the cell is blank/junk). Picking a job copies it
+  into `request.job.originalContract`, so the change order is pre-filled instead
+  of hand-typed (§3.3).
 - `ChangeRequest.job` stays exactly as it is. **Copy, don't link**: picking a
   job copies values into `request.job`. Old requests never mutate when the
   directory changes, and the schema stays valid.
@@ -75,11 +85,31 @@ export interface JobEntry {
 
 - `setup()` also creates a **Jobs** sheet (columns: id, jobNumber, customer,
   address, projectManager, estimator, status, customerPhone, customerEmail,
-  active, updatedAt).
+  active, updatedAt, **contractAmount**). `contractAmount` is appended **last**
+  on purpose so a Jobs sheet deployed before the column existed keeps every
+  existing column aligned.
 - `GET  ?action=listJobs` → `{ ok, jobs: JobEntry[] }` (active first).
 - `POST {action:"importJobs", jobs: JobEntry[], mutationId}` → **full replace**
   of the Jobs sheet (last-write-wins; the directory is reference data, not a
-  revisioned document — acceptable, unlike requests).
+  revisioned document — acceptable, unlike requests). Each row is written as
+  `[…, updatedAt, String(job.contractAmount || "")]`, and `jobRow_` reads the
+  amount back through the `JC.CONTRACT` index constant (`JC.CONTRACT = 11`), the
+  same positional style as `COLS` / `RC` — no header-name lookups.
+- **Migration (self-healing `jobsSheet_()`)**: a spreadsheet already deployed
+  with the original 11-column Jobs sheet heals itself on the **first**
+  `listJobs` / `importJobs` / `setup` call after a deployment: `jobsSheet_()`
+  fills only the empty header cells with their canonical names, so
+  `contractAmount` gains a proper header at column 12. It never inserts,
+  renames, clears, reorders, or rewrites an existing column or row 2+ data, and
+  it does not throw for a sheet it just created. The check is **gated by the
+  `JOBS_HEADERS_VERSION` script property** (`JOB_HEADERS_KEY`, set to
+  `String(JOB_HEADERS.length)`), so it runs **once per deployment** instead of
+  on every call — later list/bootstrap calls read only the job rows, with no
+  header read or write at all. If the property write fails (quota/lock) the
+  heal still stands and the next call simply re-verifies; a property failure
+  never breaks listing jobs. Nothing has to be edited in the spreadsheet by
+  hand; the deployed web app only needs the updated `Code.gs` pasted +
+  redeployed.
 - No new auth: same "execute as me, access: Anyone" web app. The import UI is
   soft-admin (anyone with the link can import, same trust model as today's
   claiming). A passcode gate is possible later; not in v1.
@@ -106,11 +136,16 @@ export interface JobEntry {
 - Show the **responsible PM prominently** (`PM: <ForePerson>`) since the
   change order owner must be clear, and offer a "My jobs" filter (remember
   the last PM name used on this device) so each PM sees their own jobs first.
-- Picking a job autofills the four job fields only — `jobNumber, customer,
-  address, projectManager` (the report has no branch/carrier/claim data, so
-  those stay manual, as today); estimator-only fields (`originalContract`,
-  `previousChanges`, `addedDays`, `orderNumber`, `date`, `insuranceRelated`)
-  are never touched.
+- Picking a job autofills the four job fields — `jobNumber, customer, address,
+  projectManager` — and, when the uploaded report carried one, the customer's
+  original contract amount into `request.job.originalContract`, so the estimator
+  opens the change order already pre-filled. A blank directory amount never
+  wipes an amount that is already in the form, and the estimator can still
+  override the value (the field stays editable, with a hint saying it came from
+  the job directory import).
+- The report has no branch/carrier/claim data, so those stay manual, as today;
+  the remaining estimator-only fields (`previousChanges`, `addedDays`,
+  `orderNumber`, `date`, `insuranceRelated`) are never touched.
 - Picking is authoritative for those four fields (it overwrites manual text —
   that's the point of the dropdown). A "Clear job link" action returns to
   manual entry without wiping values.
@@ -148,11 +183,14 @@ The admin's export has 43 columns. Mapping to `JobEntry`:
 | `status` | `Status` | raw value kept for the badge |
 | `customerPhone` | `Customer Main Phone` | display-only |
 | `customerEmail` | `Customer Email` | display-only |
+| `contractAmount` | `Estimate Amount` (primary). Fallbacks, in order: `Total Estimate Amount`, `Contract Amount`, `Original Contract Amount`, `Original Contract`, `Contract Price`, `Contract Total`, `Total Contract Amount`, `Est. Amount` (last-resort abbreviation — the exact `Estimate Amount` header always wins) | The Dash export names this column **`Estimate Amount`**, and its value **is** the customer's original contract amount — that is why it maps to `contractAmount` and then to `request.job.originalContract`. Aliases are matched case-insensitively against the trimmed/lower-cased header, first match wins. Normalized to a canonical decimal string (`"$167,045.81"` → `"167045.81"`, `"(1,234.00)"` → `"-1234.00"`, `"0.00"` → `"0"`); `""` when blank or unparseable. |
 | `active` | derived from `Status` | see below |
 
 Skipped entirely: `Notes` (huge HTML email dumps — the parser must never
-store it), `Time In Status`, compliance counts, all `Date …` / amount /
-budget / GP / invoice columns, `Bill To`, `Supervisor`.
+store it), `Time In Status`, compliance counts, all `Date …` / budget / GP /
+invoice columns (the **`Estimate Amount`** column is the only amount column
+read, and it is the customer's original contract amount), `Bill To`,
+`Supervisor`.
 
 Active mapping (proposal, confirm with admin): active =
 `Work in Progress`, `Pre-Production`; inactive but searchable =
@@ -172,8 +210,22 @@ Parser rules:
   responsible PM must be identifiable for the change order.
 - ZIP cleanup: keep the first 5 digits when the value is numeric junk
   (e.g. `458912151`, `467379173`).
+- Money cleanup: `parseMoney` strips `$`, commas, and spaces, treats
+  `(1,234.00)` and `1234.00-` as credits (`-1234.00`), drops leading zeros
+  (`0.00` → `0`), and returns `""` for blank/junk cells — never `NaN`,
+  `Infinity`, or an exponent, so a bad cell becomes a warning instead of a
+  broken amount on the change order.
 - Warn (don't block) on: empty/unassigned `ForePerson` (`DETERMINED TO BE`),
-  empty customer, missing ZIP, duplicate Job Number.
+  empty customer, no property address (missing street/city/state/ZIP), duplicate
+  Job Number, and a blank/unparseable estimate amount on a row that has a job
+  number — the exact text is
+  `Row N (jobNumber): no estimate amount (original contract).`
+- Warn (don't block) **once** for the whole file, **after** the per-row
+  warnings, when the export has no estimate-amount column at all, instead of one
+  warning per row — the exact text is
+  `Estimate amount: this export has no "Estimate Amount" column, so the original contract amount is not filled in.`
+  The import still goes through, so the directory is never blocked by a missing
+  column.
 - Full replace on import; row count and a sample preview shown before
   confirming.
 

@@ -38,7 +38,10 @@ step 4.
    and the **hays-change-orders** Drive folder. It shows a dialog with the
    deploy instructions.
 
-Re-running `setup()` is safe: it reuses the existing sheets and folder.
+Re-running `setup()` is safe: it reuses the existing sheets and folder. If the
+spreadsheet already has a **Jobs** sheet from an earlier version, `setup()`
+adds the new `contractAmount` header automatically — no manual column insert is
+needed (see the Job directory note below).
 
 > No API key is needed. Deploy the web app with access "Anyone" and keep the
 > Web app URL private. For real authentication, add Google Sign-In later.
@@ -94,7 +97,28 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
   page — import the Dash JobSummaryReport CSV (`GET ?action=listJobs`,
   `POST {action:"importJobs"}`). Importing replaces the whole list. Project
   managers pick a job in the request form to autofill the job number,
-  customer, property address, and responsible project manager.
+  customer, property address, and responsible project manager, plus the
+  customer's **original contract amount** when the uploaded report carries one.
+  That amount comes from the export's **`Estimate Amount`** column (the parser
+  also accepts `Total Estimate Amount`, `Contract Amount`, `Original Contract
+  Amount`, `Original Contract`, `Contract Price`, `Contract Total`, `Total
+  Contract Amount`, and `Est. Amount` — a last-resort abbreviation — as
+  fallbacks) and pre-fills the estimator's "Original
+  contract amount" field, which stays editable. The sheet's columns are `id,
+  jobNumber, customer, address, projectManager, estimator, status,
+  customerPhone, customerEmail, active, updatedAt, contractAmount` —
+  `contractAmount` is appended **last** so a spreadsheet created before the
+  column existed keeps every existing column aligned.
+- **Jobs sheet self-heals (no manual column insert)**: on the **first**
+  `listJobs` / `importJobs` / `setup` call after a deployment, `jobsSheet_()`
+  fills in only the empty header cells, so an already-deployed 11-column Jobs
+  sheet gains its `contractAmount` header at column 12 by itself. It never
+  inserts, clears, renames, or reorders existing columns or job rows, and does
+  nothing once the header row is complete — a `JOBS_HEADERS_VERSION` script
+  property records the verified header version, so this check runs once per
+  deployment rather than on every list/bootstrap call. Deploy the updated
+  `Code.gs` (step 4: **Deploy → New deployment**) for the deployed web app to
+  know about the new column; the spreadsheet itself needs no edits.
 - **Limits**: list/open return JSON; the sheet stores summaries rather than
   full documents.
 - **Revisions**: saves and status changes carry an expected revision and a

@@ -65,6 +65,22 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 19px 22px;
 }
+/* Read-only confirmation under the job fields: the report's Estimate Amount
+   (the customer's original contract amount) arrived with the uploaded job file,
+   so there is nothing to type in this form. */
+.pm-contract-amount {
+  margin: 12px 0 0;
+  padding: 9px 13px;
+  border: 1px solid #e1e6eb;
+  border-left: 3px solid #df4a4a;
+  border-radius: 7px;
+  background: #f7f8fa;
+  color: #6b7481;
+  line-height: 1.5;
+}
+.pm-contract-amount strong {
+  color: #45505f;
+}
 .pm-field {
   display: flex;
   flex-direction: column;

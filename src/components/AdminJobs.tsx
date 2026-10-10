@@ -127,7 +127,9 @@ export default function AdminJobs({
             <h2>Import a job report</h2>
             <p>
               Choose the CSV export or paste its contents. Importing replaces
-              the current list, so upload the latest full report.
+              the current list, so upload the latest full report. The report's
+              Estimate Amount column is saved with each job and becomes the
+              change order's original contract amount.
             </p>
           </div>
         </div>
@@ -172,6 +174,11 @@ export default function AdminJobs({
             Preview jobs
           </button>
         </div>
+        <p className="pm-caption">
+          When a project manager picks one of these jobs, its estimate amount
+          fills in the change order's original contract amount. The estimator
+          can still override it.
+        </p>
       </section>
 
       {preview ? (
@@ -215,6 +222,7 @@ export default function AdminJobs({
                   <th>Customer</th>
                   <th>Property</th>
                   <th>Project manager</th>
+                  <th>Estimate amount</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -225,6 +233,7 @@ export default function AdminJobs({
                     <td>{job.customer || "—"}</td>
                     <td>{job.address || "—"}</td>
                     <td>{job.projectManager || "—"}</td>
+                    <td>{job.contractAmount?.trim() || "—"}</td>
                     <td>{job.status || "—"}</td>
                   </tr>
                 ))}
