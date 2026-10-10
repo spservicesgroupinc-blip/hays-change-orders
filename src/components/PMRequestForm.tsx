@@ -21,11 +21,7 @@ import type {
   RequestedChange,
   SubcontractorQuote,
 } from "../types";
-import {
-  createQuote,
-  createRequestedChange,
-  submissionErrors,
-} from "../services/requests";
+import { createQuote, createRequestedChange } from "../services/requests";
 import { money, cents, validDecimal } from "../services/pricing";
 import "./PMRequestForm.css";
 
@@ -359,7 +355,6 @@ function ChangeCard({
   estimate,
   onChange,
   onRemove,
-  errors,
   disabled,
 }: {
   item: RequestedChange;
@@ -367,7 +362,6 @@ function ChangeCard({
   estimate: EstimateItem[];
   onChange: (next: RequestedChange) => void;
   onRemove: () => void;
-  errors: Record<string, string>;
   disabled: boolean;
 }) {
   const field = (key: keyof RequestedChange, value: string) =>
@@ -400,9 +394,7 @@ function ChangeCard({
           label="Room / work area"
           value={item.room}
           onChange={(value) => field("room", value)}
-          required
           placeholder="e.g. Kitchen, roof, exterior"
-          error={errors[`${prefix}-room`]}
           disabled={disabled}
         />
         <fieldset className="pm-action-field">
@@ -429,10 +421,8 @@ function ChangeCard({
         label="What needs to change?"
         value={item.description}
         onChange={(value) => field("description", value)}
-        required
         multiline
         placeholder="Describe the work in your own words. e.g. Add insulation to the exposed exterior kitchen wall before drywall."
-        error={errors[`${prefix}-description`]}
         disabled={disabled}
       />
       <TextField
@@ -440,10 +430,8 @@ function ChangeCard({
         label="Why is this change needed?"
         value={item.reason}
         onChange={(value) => field("reason", value)}
-        required
         multiline
         placeholder="e.g. The existing insulation was missing when the wall was opened."
-        error={errors[`${prefix}-reason`]}
         disabled={disabled}
       />
       <details className="pm-optional-details" open={undefined}>
@@ -504,7 +492,6 @@ function QuoteCard({
   onUpload,
   onPreview,
   onRemoveAttachment,
-  errors,
   disabled,
 }: {
   quote: SubcontractorQuote;
@@ -516,7 +503,6 @@ function QuoteCard({
   onUpload: (files: File[]) => void;
   onPreview: PMRequestFormProps["onPreviewAttachment"];
   onRemoveAttachment: PMRequestFormProps["onRemoveAttachment"];
-  errors: Record<string, string>;
   disabled: boolean;
 }) {
   const prefix = `quote-${quote.id}`;
@@ -563,7 +549,6 @@ function QuoteCard({
           inputMode="decimal"
           placeholder="Leave blank if not known"
           help="The estimator reviews this cost before setting the customer price."
-          error={errors[`${prefix}-cost`]}
           disabled={disabled}
         />
       </div>
@@ -622,7 +607,7 @@ function QuoteCard({
   );
 }
 
-function IntakeReceipt({
+export function IntakeReceipt({
   request,
   onPreview,
 }: {
@@ -829,36 +814,9 @@ export default function PMRequestForm({
   busy,
   saveStatus,
 }: PMRequestFormProps) {
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const editable =
     request.status === "draft" || request.status === "needs_information";
-  const fieldErrors: Record<string, string> = {};
-  if (attemptedSubmit) {
-    for (const [key, label] of [
-      ["jobNumber", "Job number"],
-      ["customer", "Customer"],
-      ["address", "Property address"],
-      ["projectManager", "Project manager"],
-    ] as const)
-      if (!request.job[key].trim())
-        fieldErrors[`job-${key}`] = `${label} is required.`;
-    request.requestedChanges.forEach((change) => {
-      for (const [key, label] of [
-        ["room", "Room / work area"],
-        ["description", "Requested change"],
-        ["reason", "Reason"],
-      ] as const)
-        if (!change[key].trim())
-          fieldErrors[`change-${change.id}-${key}`] = `${label} is required.`;
-    });
-    request.quotes.forEach((quote) => {
-      if (quote.cost.trim() && !validDecimal(quote.cost))
-        fieldErrors[`quote-${quote.id}-cost`] =
-          "Enter a nonnegative cost, or leave it blank.";
-    });
-  }
-  const errors = attemptedSubmit ? submissionErrors(request) : [];
   const change = (next: ChangeRequest) => onChange(next);
   const updateChange = (next: RequestedChange) =>
     change({
@@ -903,28 +861,7 @@ export default function PMRequestForm({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        setAttemptedSubmit(true);
-        const problems = submissionErrors(request);
-        if (problems.length || pendingUploads.length || busy) {
-          const firstMissing = (
-            [
-              ["job-jobNumber", request.job.jobNumber],
-              ["job-customer", request.job.customer],
-              ["job-address", request.job.address],
-              ["job-projectManager", request.job.projectManager],
-              ...request.requestedChanges.flatMap((item) => [
-                [`change-${item.id}-room`, item.room],
-                [`change-${item.id}-description`, item.description],
-                [`change-${item.id}-reason`, item.reason],
-              ]),
-            ] as [string, string][]
-          ).find(([, value]) => !value.trim());
-          const element = firstMissing
-            ? event.currentTarget.elements.namedItem(firstMissing[0])
-            : null;
-          if (element instanceof HTMLElement) element.focus();
-          return;
-        }
+        if (busy || pendingUploads.length) return;
         onSubmit();
       }}
     >
@@ -936,8 +873,8 @@ export default function PMRequestForm({
           review the scope, set pricing, and prepare the change order.
         </p>
         <span className="pm-caption">
-          Fields marked <span aria-hidden="true">*</span> are required to
-          submit. Drafts save as you type.
+          Every field is optional — send whatever you know. Drafts save as you
+          type.
         </span>
       </div>
       {request.status === "needs_information" ? (
@@ -964,9 +901,7 @@ export default function PMRequestForm({
             name="job-jobNumber"
             label="Job number"
             value={request.job.jobNumber}
-            required
             disabled={disabled}
-            error={fieldErrors["job-jobNumber"]}
             onChange={(jobNumber) =>
               change({ ...request, job: { ...request.job, jobNumber } })
             }
@@ -975,9 +910,7 @@ export default function PMRequestForm({
             name="job-customer"
             label="Customer / project owner"
             value={request.job.customer}
-            required
             disabled={disabled}
-            error={fieldErrors["job-customer"]}
             onChange={(customer) =>
               change({ ...request, job: { ...request.job, customer } })
             }
@@ -986,9 +919,7 @@ export default function PMRequestForm({
             name="job-address"
             label="Property address"
             value={request.job.address}
-            required
             disabled={disabled}
-            error={fieldErrors["job-address"]}
             onChange={(address) =>
               change({ ...request, job: { ...request.job, address } })
             }
@@ -997,9 +928,7 @@ export default function PMRequestForm({
             name="job-projectManager"
             label="Project manager"
             value={request.job.projectManager}
-            required
             disabled={disabled}
-            error={fieldErrors["job-projectManager"]}
             onChange={(projectManager) =>
               change({ ...request, job: { ...request.job, projectManager } })
             }
@@ -1083,16 +1012,10 @@ export default function PMRequestForm({
                   })),
                 })
               }
-              errors={fieldErrors}
               disabled={disabled}
             />
           ))}
         </div>
-        {attemptedSubmit && !request.requestedChanges.length ? (
-          <p className="pm-field-error" role="alert">
-            Add at least one work area or scope change.
-          </p>
-        ) : null}
         <button
           type="button"
           className="button pm-add-change"
@@ -1146,7 +1069,6 @@ export default function PMRequestForm({
               onUpload={(files) => upload(files, "quote", quote.id)}
               onPreview={onPreviewAttachment}
               onRemoveAttachment={onRemoveAttachment}
-              errors={fieldErrors}
               disabled={disabled}
             />
           ))}
@@ -1274,16 +1196,6 @@ export default function PMRequestForm({
           </p>
         ) : null}
       </section>
-      {errors.length ? (
-        <div className="pm-validation-summary" role="alert">
-          <strong>Complete these details before submitting</strong>
-          <ul>
-            {errors.map((error, index) => (
-              <li key={index}>{error}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
       <div className="pm-submit-bar">
         <div>
           <strong>

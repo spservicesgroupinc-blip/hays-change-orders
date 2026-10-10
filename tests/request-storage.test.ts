@@ -114,13 +114,13 @@ function upload(backend: ReturnType<typeof mockBackend>, requestId: string, atta
   return backend.post({ action: "uploadAttachment", requestId, attachmentId, mutationId, file: { name: "quote.pdf", mimeType: "application/pdf", kind: "quote", size: Buffer.byteLength(data), data: Buffer.from(data).toString("base64") } });
 }
 
-test("PM submission needs actionable scope, not estimator pricing", () => {
-  const request = intakeRequest(); request.job.originalContract = ""; request.job.branchContact = ""; request.job.carrier = ""; request.job.claim = "";
+test("PM submissions are permissive — any fields may be missing", () => {
+  const request = intakeRequest();
+  request.job.jobNumber = ""; request.job.customer = ""; request.job.address = ""; request.job.projectManager = "";
+  request.requestedChanges[0].room = ""; request.requestedChanges[0].description = ""; request.requestedChanges[0].reason = "";
+  request.quotes = [{ ...createQuote(), cost: "-2" }];
   assert.deepEqual(submissionErrors(request), []);
-  request.requestedChanges[0].reason = "";
-  assert.ok(submissionErrors(request).some(error => /why/i.test(error)));
-  request.requestedChanges[0].reason = "Changed condition";
-  request.quotes = [{ ...createQuote(), cost: "-2" }]; assert.ok(submissionErrors(request).some(error => /quoted cost/i.test(error)));
+  assert.deepEqual(submissionErrors(createRequest()), []);
 });
 test("readiness validates coverage, duplicate baselines, contract and customer scope confirmations", () => {
   const request = validRequest(); assert.deepEqual(readyErrors(request), []);

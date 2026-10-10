@@ -35,7 +35,6 @@ function env(name: string): string | undefined {
   return value?.[name];
 }
 const API_URL = env("VITE_APPS_SCRIPT_URL") || "/__api__";
-const API_KEY = env("VITE_APPS_SCRIPT_KEY") || "";
 function query(params: Record<string, string | undefined>): string {
   return Object.entries(params)
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -112,14 +111,12 @@ function toSummary(row: ServerSummary): DraftSummary {
 export async function listDrafts(): Promise<DraftSummary[]> {
   const data = await get<{ drafts: ServerSummary[] }>({
     action: "list",
-    key: API_KEY,
   });
   return data.drafts.map(toSummary);
 }
 export async function openDraft(id: string): Promise<ChangeOrderDraft> {
   const data = await get<{ draft: SerializedDraft }>({
     action: "open",
-    key: API_KEY,
     id,
   });
   return deserializeDraft(data.draft);
@@ -127,12 +124,11 @@ export async function openDraft(id: string): Promise<ChangeOrderDraft> {
 export async function saveDraft(draft: ChangeOrderDraft): Promise<void> {
   await post<{ ok: true }>({
     action: "save",
-    key: API_KEY,
     draft: serializeDraft(draft),
   });
 }
 export async function deleteDraft(id: string): Promise<void> {
-  await post<{ ok: true }>({ action: "delete", key: API_KEY, id });
+  await post<{ ok: true }>({ action: "delete", id });
 }
 export async function uploadPdf(
   name: string,
@@ -142,7 +138,6 @@ export async function uploadPdf(
 ): Promise<string> {
   const data = await post<{ ok: true; fileId: string }>({
     action: "uploadPdf",
-    key: API_KEY,
     name,
     mimeType,
     data: base64,
@@ -158,7 +153,7 @@ export async function fetchSourcePdf(
     name: string;
     mimeType: string;
     data: string;
-  }>({ action: "pdf", key: API_KEY, id: driveFileId });
+  }>({ action: "pdf", id: driveFileId });
   return {
     name: data.name,
     blob: base64ToBlob(data.data, data.mimeType),
@@ -184,40 +179,40 @@ function base64ToBlob(data: string, mimeType: string): Blob {
 }
 
 export async function listRequests(): Promise<RequestSummary[]> {
-  const data = await get<{ requests: RequestSummary[] }>({ action: "listRequests", key: API_KEY });
+  const data = await get<{ requests: RequestSummary[] }>({ action: "listRequests" });
   return data.requests;
 }
 export async function openRequest(id: string): Promise<ChangeRequest> {
-  const data = await get<{ request: ChangeRequest }>({ action: "openRequest", id, key: API_KEY });
+  const data = await get<{ request: ChangeRequest }>({ action: "openRequest", id });
   return data.request;
 }
 export async function saveRequest(request: ChangeRequest, expectedRevision: number, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "saveRequest", request, expectedRevision, mutationId, key: API_KEY });
+  const data = await post<{ request: ChangeRequest }>({ action: "saveRequest", request, expectedRevision, mutationId });
   return data.request;
 }
 export async function claimRequest(id: string, expectedRevision: number, estimatorName: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "claimRequest", id, expectedRevision, estimatorName, mutationId, key: API_KEY });
+  const data = await post<{ request: ChangeRequest }>({ action: "claimRequest", id, expectedRevision, estimatorName, mutationId });
   return data.request;
 }
 export async function transitionRequest(id: string, expectedRevision: number, status: RequestStatus, question: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "transitionRequest", id, expectedRevision, status, question, mutationId, key: API_KEY });
+  const data = await post<{ request: ChangeRequest }>({ action: "transitionRequest", id, expectedRevision, status, question, mutationId });
   return data.request;
 }
 export interface AttachmentUpload { name: string; mimeType: string; size: number; kind: AttachmentKind; data: string }
 export async function uploadAttachment(requestId: string, file: AttachmentUpload, attachmentId: string, mutationId: string): Promise<RequestAttachment> {
-  const data = await post<{ attachment: RequestAttachment }>({ action: "uploadAttachment", requestId, attachmentId, mutationId, file, key: API_KEY });
+  const data = await post<{ attachment: RequestAttachment }>({ action: "uploadAttachment", requestId, attachmentId, mutationId, file });
   return data.attachment;
 }
 export interface DocumentUpload { name: string; mimeType: string; size: number; data: string }
 export async function completeRequest(id: string, expectedRevision: number, documents: DocumentUpload[], mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "completeRequest", id, expectedRevision, documents, mutationId, key: API_KEY });
+  const data = await post<{ request: ChangeRequest }>({ action: "completeRequest", id, expectedRevision, documents, mutationId });
   return data.request;
 }
 export async function fetchAttachment(requestId: string, attachmentId: string): Promise<{ name: string; blob: Blob }> {
-  const data = await get<{ name: string; mimeType: string; data: string }>({ action: "fetchAttachment", requestId, attachmentId, key: API_KEY });
+  const data = await get<{ name: string; mimeType: string; data: string }>({ action: "fetchAttachment", requestId, attachmentId });
   return { name: data.name, blob: base64ToBlob(data.data, data.mimeType) };
 }
 export async function convertLegacyRequest(id: string, mutationId: string): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({ action: "convertLegacyRequest", id, mutationId, key: API_KEY });
+  const data = await post<{ request: ChangeRequest }>({ action: "convertLegacyRequest", id, mutationId });
   return data.request;
 }

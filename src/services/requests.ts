@@ -1,5 +1,5 @@
 import { createDraft, newId, type ChangeRequest, type RequestedChange, type SubcontractorQuote, type ChangeOrderDraft, type ChangeItem, type EstimateItem, type JobDetails } from "../types";
-import { validDecimal, validationErrors } from "./pricing";
+import { validationErrors } from "./pricing";
 
 export function createRequest(): ChangeRequest {
   const legacy = createDraft();
@@ -11,24 +11,12 @@ export function createRequestedChange(): RequestedChange {
 export function createQuote(): SubcontractorQuote {
   return { id: newId(), subcontractor: "", trade: "", cost: "", notes: "", changeIds: [], attachmentIds: [] };
 }
-export function submissionErrors(request: ChangeRequest): string[] {
-  const errors: string[] = [];
-  for (const [key, label] of [["jobNumber", "Job number"], ["customer", "Customer"], ["address", "Property address"], ["projectManager", "Project manager"]] as const)
-    if (!request.job[key].trim()) errors.push(`${label} is required.`);
-  if (!request.requestedChanges.length) errors.push("Describe at least one requested change.");
-  const changeIds = new Set(request.requestedChanges.map(c => c.id));
-  const attachmentIds = new Set(request.attachments.map(a => a.id));
-  request.requestedChanges.forEach((change, i) => {
-    if (!change.room.trim()) errors.push(`Change ${i + 1}: enter the room or work area.`);
-    if (!change.description.trim()) errors.push(`Change ${i + 1}: describe the requested work.`);
-    if (!change.reason.trim()) errors.push(`Change ${i + 1}: explain why the change is needed.`);
-  });
-  request.quotes.forEach((quote, i) => {
-    if (quote.cost.trim() && !validDecimal(quote.cost)) errors.push(`Quote ${i + 1}: enter a valid nonnegative quoted cost or leave it blank.`);
-    if (quote.changeIds.some(id => !changeIds.has(id))) errors.push(`Quote ${i + 1}: link it to an existing requested change.`);
-    if (quote.attachmentIds.some(id => !attachmentIds.has(id))) errors.push(`Quote ${i + 1}: upload or remove the missing quote attachment.`);
-  });
-  return errors;
+// A request can be submitted at any time, even before every detail is known.
+// Estimators review the scope and ask for information when something is missing,
+// so submission intentionally blocks on nothing — no required fields, no minimum
+// number of work areas, and no quote-cost formatting rules.
+export function submissionErrors(_request: ChangeRequest): string[] {
+  return [];
 }
 const jobKeys: (keyof JobDetails)[] = ["customer", "address", "jobNumber", "projectManager", "branchName", "branchAddress", "branchPhone", "branchContact", "carrier", "claim", "orderNumber", "date", "insuranceRelated", "originalContract", "previousChanges", "addedDays"];
 function customerOriginal(row: EstimateItem): EstimateItem {

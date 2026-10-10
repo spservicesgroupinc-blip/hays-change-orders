@@ -3,11 +3,11 @@
  *
  * Container-bound script: paste this whole file into the Apps Script editor
  * attached to a Google Sheet (Extensions → Apps Script), then run setup()
- * once (or use the "Change Orders" menu). setup() creates the Drafts sheet,
- * the Drive folder, and an API key, and prints the values to paste into
- * .env.local. Finally deploy as a web app (execute as me, access: Anyone).
+ * once (or use the "Change Orders" menu). setup() creates the Drafts sheet
+ * and the Drive folder. Finally deploy as a web app (execute as me, access:
+ * Anyone) and paste the Web app URL into .env.local.
  *
- * Endpoints (all require the shared API key):
+ * Endpoints:
  *   GET  ?action=list             → { ok, drafts: [{summary…}] }
  *   GET  ?action=open&id=…        → { ok, draft }
  *   GET  ?action=pdf&id=…         → { ok, name, mimeType, data(base64) }
@@ -18,7 +18,6 @@
 
 const SHEET_NAME = "Drafts";
 const DRIVE_FOLDER_NAME = "hays-change-orders";
-const API_KEY_PROP = "API_KEY";
 
 const COLS = {
   ID: 0,
@@ -46,13 +45,6 @@ function json_(obj) {
 
 function fail_(message, code, currentRevision) {
   return json_({ ok: false, error: message, code: code || "SERVICE_ERROR", currentRevision: currentRevision });
-}
-
-function verifiedKey_(key) {
-  const expected = PropertiesService.getScriptProperties().getProperty(
-    API_KEY_PROP,
-  );
-  return Boolean(key) && key === expected;
 }
 
 function sheet_() {
@@ -102,34 +94,16 @@ function folder_() {
   return folder;
 }
 
-function generateKey_() {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let key = "";
-  for (let i = 0; i < 48; i += 1)
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  return key;
-}
-
 function setup() {
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", active.getId());
   const sheet = sheet_();
   const folder = folder_();
-  const props = PropertiesService.getScriptProperties();
   requestsSheet_();
-  let key = props.getProperty(API_KEY_PROP);
-  if (!key) {
-    key = generateKey_();
-    props.setProperty(API_KEY_PROP, key);
-  }
   const summary = [
     "Setup complete.",
     "Drafts sheet: " + sheet.getName(),
     "Drive folder: " + folder.getName(),
-    "",
-    "Paste this API key into .env.local as VITE_APPS_SCRIPT_KEY:",
-    key,
     "",
     "Then: Deploy → New deployment → Web app",
     "  Execute as: Me",
@@ -208,7 +182,6 @@ function draftToRow_(draft) {
 
 function doGet(e) {
   const p = (e && e.parameter) || {};
-  if (!verifiedKey_(p.key)) return fail_("Unauthorized.");
   if (p.action === "listRequests") return guarded_(function () { return listRequests_(); });
   if (p.action === "openRequest") return guarded_(function () { return openRequest_(p.id); });
   if (p.action === "fetchAttachment") return guarded_(function () { return fetchAttachment_(p.requestId, p.attachmentId); });
@@ -226,7 +199,6 @@ function doPost(e) {
   } catch (err) {
     return fail_("Invalid request.");
   }
-  if (!verifiedKey_(body.key)) return fail_("Unauthorized.");
   if (body.action === "saveRequest") return guarded_(function () { return saveRequest_(body); });
   if (body.action === "claimRequest") return guarded_(function () { return claimRequest_(body); });
   if (body.action === "transitionRequest") return guarded_(function () { return transitionRequest_(body); });
@@ -434,12 +406,10 @@ function roundDecimalCents_(digits, places, negative) {
   return negative ? -magnitude : magnitude;
 }
 function submissionErrors_(request) {
-  const errors = [];
-  [["jobNumber", "Job number"], ["customer", "Customer"], ["address", "Property address"], ["projectManager", "Project manager"]].forEach(function(pair) { if (!String(request.job[pair[0]] || "").trim()) errors.push(pair[1] + " is required."); });
-  if (!request.requestedChanges.length) errors.push("Describe at least one requested change.");
-  request.requestedChanges.forEach(function(change, index) { if (!change.room.trim() || !change.description.trim() || !change.reason.trim()) errors.push("Change " + (index + 1) + ": enter its work area, description, and reason."); });
-  request.quotes.forEach(function(quote, index) { if (quote.cost.trim() && !decimal_(quote.cost, false)) errors.push("Quote " + (index + 1) + ": enter a valid quoted cost or leave it blank."); });
-  return errors;
+  // A request may be submitted with any data. Estimators review the scope and
+  // ask for information instead, so submission blocks on nothing — no required
+  // fields, no minimum work areas, and no quote-cost formatting rules.
+  return [];
 }
 function readyErrors_(request) {
   const errors = submissionErrors_(request); const job = request.job;

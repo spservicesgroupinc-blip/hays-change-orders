@@ -42,7 +42,7 @@ import {
   listRecoveries,
   persistRecovery,
 } from "./services/requestEditor";
-import PMRequestForm from "./components/PMRequestForm";
+import PMRequestForm, { IntakeReceipt } from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import ChangeOrders from "./components/ChangeOrders";
 import LegacyWorkspace from "./LegacyWorkspace";
@@ -94,12 +94,13 @@ function Brand() {
   );
 }
 
-function ClaimScreen({
+function SubmittedReview({
   request,
   claimName,
   onClaimName,
   onClaim,
   onBack,
+  onPreview,
   busy,
 }: {
   request: ChangeRequest;
@@ -107,19 +108,21 @@ function ClaimScreen({
   onClaimName: (value: string) => void;
   onClaim: () => void;
   onBack: () => void;
+  onPreview: (attachment: RequestAttachment) => void;
   busy: boolean;
 }) {
   return (
-    <div className="shell-claim">
+    <div className="shell-claim shell-review">
       <button className="back-link" onClick={onBack}>
         <ArrowLeft size={15} />
         Back to requests
       </button>
+      <IntakeReceipt request={request} onPreview={onPreview} />
       <div className="shell-claim-card">
         <div className="empty-icon">
           <Send size={26} />
         </div>
-        <h2>This request is waiting in the queue.</h2>
+        <h2>Estimator? Claim this request to price it.</h2>
         <p>
           <strong>{request.job.customer || "Unnamed project"}</strong>
           {request.job.jobNumber ? ` · ${request.job.jobNumber}` : ""}
@@ -739,12 +742,15 @@ export default function App() {
           ) : null}
           {request ? (
             request.status === "submitted" ? (
-              <ClaimScreen
+              <SubmittedReview
                 request={request}
                 claimName={claimName}
                 onClaimName={setClaimName}
                 onClaim={() => void claim()}
                 onBack={() => void goHome()}
+                onPreview={(attachment) =>
+                  void previewAttachment(attachment)
+                }
                 busy={busy === "Claiming…"}
               />
             ) : request.status === "draft" ||

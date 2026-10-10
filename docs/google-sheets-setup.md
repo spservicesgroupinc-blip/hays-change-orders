@@ -34,16 +34,13 @@ step 4.
 2. Accept the OAuth consent for **Google Sheets** and **Google Drive** when
    prompted.
 3. `setup()` creates the **Drafts** sheet (legacy change orders), the
-   **Requests** sheet (PM request queue), creates the **hays-change-orders**
-   Drive folder, and generates an API key. It shows a dialog with:
-   - the **API key** → save this for step 5 (`VITE_APPS_SCRIPT_KEY`);
-   - the deploy instructions.
+   **Requests** sheet (PM request queue), and the **hays-change-orders**
+   Drive folder. It shows a dialog with the deploy instructions.
 
-Re-running `setup()` is safe: it reuses the existing sheets, folder, and key.
+Re-running `setup()` is safe: it reuses the existing sheets and folder.
 
-> The key is an access guard, not encryption. Anyone who can read the built
-> JavaScript can extract it. For real authentication, replace the key check
-> with Google Sign-In later.
+> No API key is needed. Deploy the web app with access "Anyone" and keep the
+> Web app URL private. For real authentication, add Google Sign-In later.
 
 ## 4. Deploy as a web app
 
@@ -65,7 +62,6 @@ Create `c:\Users\russe\hays-change-orders\.env.local` with:
 
 ```ini
 VITE_APPS_SCRIPT_URL=https://script.google.com/macros/s/<id>/exec
-VITE_APPS_SCRIPT_KEY=<the same API_KEY value from step 3>
 ```
 
 Then restart `npm run dev` (Vite reads `.env.local` at startup).
