@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   Archive,
   ArrowLeft,
   ArrowRight,
+  BadgeCheck,
   CheckCircle2,
+  ClipboardList,
   Clock3,
   FileText,
   FolderOpen,
+  Hourglass,
+  Inbox,
   ListChecks,
   Plus,
   Search,
   Send,
   ShieldCheck,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import {
@@ -62,6 +67,51 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
   ready: "Ready",
   completed: "Completed",
 };
+// Home dashboard tiles double as status filters for the request queue.
+type StatKey = RequestStatus | "all";
+const STAT_TILES: {
+  key: StatKey;
+  label: string;
+  tone: string;
+  icon: ReactElement;
+}[] = [
+  {
+    key: "all",
+    label: "All requests",
+    tone: "all",
+    icon: <Inbox size={16} />,
+  },
+  {
+    key: "needs_information",
+    label: "Needs info",
+    tone: "attention",
+    icon: <TriangleAlert size={16} />,
+  },
+  {
+    key: "submitted",
+    label: "In queue",
+    tone: "queue",
+    icon: <Hourglass size={16} />,
+  },
+  {
+    key: "in_review",
+    label: "In review",
+    tone: "review",
+    icon: <ClipboardList size={16} />,
+  },
+  {
+    key: "ready",
+    label: "Ready",
+    tone: "ready",
+    icon: <BadgeCheck size={16} />,
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    tone: "done",
+    icon: <CheckCircle2 size={16} />,
+  },
+];
 type View =
   | { kind: "home" }
   | { kind: "request"; id: string }
@@ -219,6 +269,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [listError, setListError] = useState("");
   const [homeSearch, setHomeSearch] = useState("");
+  const [homeStatus, setHomeStatus] = useState<StatKey>("all");
   const [legacySearch, setLegacySearch] = useState("");
   const [converting, setConverting] = useState("");
 
@@ -303,7 +354,9 @@ export default function App() {
     data: ChangeRequest,
     recovered?: Awaited<ReturnType<typeof listRecoveries>>[number],
   ) {
-    attachEditor(new RequestEditor(data, undefined, persistRecovery, recovered));
+    attachEditor(
+      new RequestEditor(data, undefined, persistRecovery, recovered),
+    );
     setPendingUploads([]);
     pendingFiles.current.clear();
     setSaveError("");
@@ -659,10 +712,24 @@ export default function App() {
     }
   }
 
-  const filteredRequests = requests.filter((item) =>
-    `${item.job.customer} ${item.job.jobNumber} ${item.job.projectManager}`
-      .toLowerCase()
-      .includes(homeSearch.toLowerCase()),
+  const statusCounts = useMemo(() => {
+    const counts: Record<RequestStatus, number> = {
+      draft: 0,
+      submitted: 0,
+      in_review: 0,
+      needs_information: 0,
+      ready: 0,
+      completed: 0,
+    };
+    for (const item of requests) counts[item.status] += 1;
+    return counts;
+  }, [requests]);
+  const filteredRequests = requests.filter(
+    (item) =>
+      (homeStatus === "all" || item.status === homeStatus) &&
+      `${item.job.customer} ${item.job.jobNumber} ${item.job.projectManager}`
+        .toLowerCase()
+        .includes(homeSearch.toLowerCase()),
   );
   const filteredLegacy = legacyDrafts.filter((item) =>
     `${item.job.customer} ${item.job.jobNumber}`
@@ -773,8 +840,8 @@ export default function App() {
             <div className="storage-error" role="alert">
               <X size={18} />
               <span>
-                <strong>The request could not be saved.</strong> {saveError} Your
-                work remains in this window.
+                <strong>The request could not be saved.</strong> {saveError}{" "}
+                Your work remains in this window.
               </span>
               <button className="button small" onClick={() => void flush()}>
                 Retry
@@ -789,9 +856,7 @@ export default function App() {
                 onClaimName={setClaimName}
                 onClaim={() => void claim()}
                 onBack={() => void goHome()}
-                onPreview={(attachment) =>
-                  void previewAttachment(attachment)
-                }
+                onPreview={(attachment) => void previewAttachment(attachment)}
                 busy={busy === "Claiming…"}
               />
             ) : request.status === "draft" ||
@@ -835,59 +900,113 @@ export default function App() {
         </main>
       ) : (
         <main className="home shell-home">
-          <div className="eyebrow">PROJECT MANAGEMENT / CHANGE ORDERS</div>
-          <div className="home-title">
-            <div>
-              <h1>
-                Describe the change.
-                <br />
-                We'll price the rest.
-              </h1>
+          <header className="ops-head">
+            <div className="ops-head-text">
+              <span className="eyebrow">Operations dashboard</span>
+              <h1>Change orders</h1>
               <p>
-                Send estimating what changed on the job.
-                <br className="mobile-break" /> They confirm pricing and prepare
-                the paperwork.
+                Project managers log what changed on the job. Estimating
+                confirms pricing and prepares the customer documents.
               </p>
             </div>
-            <button className="button primary large" onClick={newRequest}>
-              <Plus size={20} />
-              New request
-            </button>
-          </div>
+            <div className="ops-head-actions">
+              <button className="button primary large" onClick={newRequest}>
+                <Plus size={20} />
+                New request
+              </button>
+            </div>
+          </header>
+
+          <section className="stat-grid" aria-label="Request status overview">
+            {STAT_TILES.map(({ key, label, tone, icon }) => {
+              const count = key === "all" ? requests.length : statusCounts[key];
+              const active = homeStatus === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`stat-tile tone-${tone}${active ? " is-active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => setHomeStatus(active ? "all" : key)}
+                >
+                  <span className="stat-icon">{icon}</span>
+                  <span className="stat-value">{count}</span>
+                  <span className="stat-label">{label}</span>
+                </button>
+              );
+            })}
+          </section>
+
+          {statusCounts.needs_information > 0 &&
+          homeStatus !== "needs_information" ? (
+            <section className="attention-banner">
+              <span className="attention-icon">
+                <TriangleAlert size={18} />
+              </span>
+              <div>
+                <strong>
+                  {statusCounts.needs_information === 1
+                    ? "1 request needs more information."
+                    : `${statusCounts.needs_information} requests need more information.`}
+                </strong>
+                <span>
+                  Estimating is waiting on details from the project manager.
+                </span>
+              </div>
+              <button
+                className="button small"
+                onClick={() => setHomeStatus("needs_information")}
+              >
+                Review
+              </button>
+            </section>
+          ) : null}
 
           <section className="draft-section">
             <div className="section-heading">
               <div>
                 <h2>
-                  Requests <span className="count">{requests.length}</span>
+                  Requests{" "}
+                  <span className="count">{filteredRequests.length}</span>
                 </h2>
                 <p>
-                  Change requests shared with estimating, from first description
-                  to the ready document.
+                  {homeStatus === "all"
+                    ? "Live status for every request, from intake to the customer-ready packet."
+                    : `Showing ${STATUS_LABELS[homeStatus].toLowerCase()} requests only.`}
                 </p>
               </div>
-              {requests.length ? (
-                <label className="search">
-                  <Search size={17} />
-                  <input
-                    aria-label="Search requests"
-                    placeholder="Customer, job, or PM…"
-                    value={homeSearch}
-                    onChange={(event) => setHomeSearch(event.target.value)}
-                  />
-                </label>
-              ) : null}
+              <div className="section-tools">
+                {homeStatus === "all" ? null : (
+                  <button
+                    className="text-button"
+                    onClick={() => setHomeStatus("all")}
+                  >
+                    <X size={13} />
+                    Clear filter
+                  </button>
+                )}
+                {requests.length ? (
+                  <label className="search">
+                    <Search size={17} />
+                    <input
+                      aria-label="Search requests"
+                      placeholder="Customer, job, or PM…"
+                      value={homeSearch}
+                      onChange={(event) => setHomeSearch(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+              </div>
             </div>
             {!requests.length ? (
               <div className="empty-state">
                 <div className="empty-icon">
                   <FileText size={30} />
                 </div>
-                <h3>No requests yet.</h3>
+                <h3>No change requests yet.</h3>
                 <p>
-                  Create a request to tell estimating what changed.
-                  <br />
-                  Estimating claims it, prices it, and prepares the documents.
+                  Requests submitted by project managers land here with live
+                  pricing status from estimating.
                 </p>
                 <button className="button" onClick={newRequest}>
                   <Plus size={16} />
@@ -940,7 +1059,7 @@ export default function App() {
                 ))}
                 {!filteredRequests.length ? (
                   <p className="shell-empty-filter">
-                    No requests match your search.
+                    No requests match this view.
                   </p>
                 ) : null}
               </div>
