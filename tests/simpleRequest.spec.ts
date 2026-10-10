@@ -206,6 +206,15 @@ async function installMockApi(
   return api;
 }
 
+/** Types into the customer field and takes the matching directory row. */
+async function pickCustomer(page: Page, customer: string) {
+  await page.getByLabel("Customer / job", { exact: true }).fill(customer);
+  await page
+    .getByRole("button", { name: new RegExp(`for ${customer}$`) })
+    .first()
+    .click();
+}
+
 test("the quick request tab opens from the header and survives a reload", async ({
   page,
 }) => {
@@ -303,10 +312,10 @@ test("an empty quick request is refused with a specific reason", async ({
   await page.goto("/#/simple");
   await page.getByRole("button", { name: "Send to estimating" }).click();
   await expect(
-    page.getByText("Choose a customer from the list."),
+    page.getByText("Type a customer or pick a job from the list."),
   ).toBeVisible();
 
-  await page.getByLabel("Customer", { exact: true }).selectOption("job-2");
+  await pickCustomer(page, "Maple Court Duplex");
   await page.getByRole("button", { name: "Send to estimating" }).click();
   await expect(
     page.getByText("Add a note or at least one photo before sending."),
@@ -317,7 +326,7 @@ test("an empty quick request is refused with a specific reason", async ({
 test("a project manager sends a text-only quick request", async ({ page }) => {
   const api = await installMockApi(page);
   await page.goto("/#/simple");
-  await page.getByLabel("Customer", { exact: true }).selectOption("job-1");
+  await pickCustomer(page, "York Ridge Apartments");
   await expect(page.locator(".sr-summary")).toContainText("F-26-0366-P");
   await page
     .getByLabel("What changed?", { exact: true })
@@ -363,7 +372,7 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
 }) => {
   const api = await installMockApi(page);
   await page.goto("/#/simple");
-  await page.getByLabel("Customer", { exact: true }).selectOption("job-1");
+  await pickCustomer(page, "York Ridge Apartments");
   await page
     .locator('input[type="file"][accept="image/*"]')
     .setInputFiles(resolve("tmp/fixtures/photo-800x600.png"));
@@ -433,12 +442,12 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
   });
 });
 
-test("the customer menu falls back to a typed name when the directory is empty", async ({
+test("the customer field falls back to a typed name when the directory is empty", async ({
   page,
 }) => {
   await installMockApi(page, []);
   await page.goto("/#/simple");
-  await expect(page.locator(".sr-select")).toHaveCount(0);
+  await expect(page.locator(".sr-matches")).toHaveCount(0);
   await page.getByLabel("Customer / project owner").fill("Walk-in customer");
   await page
     .getByLabel("What changed?", { exact: true })
@@ -454,7 +463,7 @@ test("a failed upload is retried on the same request, never a duplicate", async 
 }) => {
   const api = await installMockApi(page);
   await page.goto("/#/simple");
-  await page.getByLabel("Customer", { exact: true }).selectOption("job-2");
+  await pickCustomer(page, "Maple Court Duplex");
   await page
     .getByLabel("What changed?", { exact: true })
     .fill("Replace the damaged siding");
@@ -484,4 +493,50 @@ test("a failed upload is retried on the same request, never a duplicate", async 
   expect(api.uploads.map((upload) => upload.failed)).toEqual([true, false]);
   expect(api.uploads[0].attachmentId).toBe(api.uploads[1].attachmentId);
   expect(api.uploads[0].mutationId).toBe(api.uploads[1].mutationId);
+});
+
+test("typing finds the customer instead of scrolling a long list", async ({
+  page,
+}) => {
+  const api = await installMockApi(page);
+  await page.goto("/#/simple");
+  const field = page.getByLabel("Customer / job", { exact: true });
+
+  // Part of a name or a job number both find the row — and only that row.
+  await field.fill("F-26-0366");
+  await expect(
+    page.getByRole("button", {
+      name: "Use job F-26-0366-P for York Ridge Apartments",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Use job F-26-0401-P for Maple Court Duplex",
+    }),
+  ).toHaveCount(0);
+
+  await field.fill("maple");
+  await page
+    .getByRole("button", {
+      name: "Use job F-26-0401-P for Maple Court Duplex",
+    })
+    .click();
+  await expect(field).toHaveValue("Maple Court Duplex — F-26-0401-P");
+  await expect(page.locator(".sr-summary")).toContainText("Ray Alvarez");
+  await expect(page.locator(".sr-matches")).toHaveCount(0);
+
+  // Typing over the pick releases it, and a name outside the directory is still
+  // sendable with whatever the PM typed.
+  await field.fill("Walk-in customer");
+  await expect(page.locator(".sr-summary")).toHaveCount(0);
+  await expect(page.locator(".sr-match-empty")).toContainText("No job matches");
+  await page
+    .getByLabel("What changed?", { exact: true })
+    .fill("Siding damage on the north wall");
+  await page.getByRole("button", { name: "Send to estimating" }).click();
+  await expect(page.locator(".notice.success")).toContainText(
+    "Sent to estimating: Walk-in customer.",
+  );
+  expect(api.saved[0].job.customer).toBe("Walk-in customer");
+  expect(api.saved[0].job.jobNumber).toBe("");
 });

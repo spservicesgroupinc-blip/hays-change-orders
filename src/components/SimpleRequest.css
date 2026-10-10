@@ -47,7 +47,6 @@
   color: #364151;
   margin-bottom: 7px;
 }
-.sr-select,
 .sr-input,
 .sr-textarea {
   width: 100%;
@@ -65,10 +64,59 @@
   line-height: 1.6;
   resize: vertical;
 }
-.sr-select:disabled,
 .sr-input:disabled,
 .sr-textarea:disabled {
   background: #f7f8fa;
+}
+/* Type-ahead customer/job field: results sit inline so a phone never fights a
+   popover, and each row is a full-width tap target. */
+.sr-combo {
+  position: relative;
+}
+.sr-matches {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.sr-match {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 13px;
+  text-align: left;
+  color: inherit;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #eef1f5;
+}
+.sr-matches li:last-child .sr-match {
+  border-bottom: 0;
+}
+.sr-match:hover,
+.sr-match:focus-visible {
+  background: #f7f8fa;
+}
+.sr-match strong {
+  font-size: 15px;
+}
+.sr-match span {
+  font-size: 13px;
+  color: #45505f;
+}
+.sr-match small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.sr-match-empty {
+  padding: 12px 13px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
 }
 /* Read-only confirmation of what the directory row carried into the request. */
 .sr-summary {

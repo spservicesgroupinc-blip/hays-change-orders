@@ -33,6 +33,10 @@ interface PhotoEntry {
   edited: boolean;
 }
 
+/** How a directory row reads in the field and in the suggestion list. */
+const jobLabel = (job: JobEntry) =>
+  `${job.customer || "No customer name"} — ${job.jobNumber || "no job number"}`;
+
 /*
  * Minimal Speech Recognition surface. It is declared locally so the browser
  * API's vendor shape never leaks an `any` into this component's exports.
@@ -205,7 +209,11 @@ export default function SimpleRequest(
   } | null>(null);
 
   const [jobId, setJobId] = useState("");
-  const [typedCustomer, setTypedCustomer] = useState("");
+  // The customer/job search text. In directory mode it is the type-ahead query
+  // and then the chosen job's label; without a directory it is simply the
+  // customer's name, so the page still works on a bare device.
+  const [customerText, setCustomerText] = useState("");
+  const [matchListOpen, setMatchListOpen] = useState(false);
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [pdf, setPdf] = useState<File | null>(null);
@@ -228,6 +236,31 @@ export default function SimpleRequest(
   const selectedJob = directoryJobs.find((job) => job.id === jobId) ?? null;
   const editing = photos.find((photo) => photo.id === editingId) ?? null;
   const fallbackCustomer = !directoryJobs.length;
+  const query = customerText.trim().toLowerCase();
+  const selectedLabel = selectedJob ? jobLabel(selectedJob) : "";
+  // Suggestions appear while the PM types and never for the job already chosen.
+  const showMatches =
+    !fallbackCustomer &&
+    matchListOpen &&
+    query.length > 0 &&
+    query !== selectedLabel.toLowerCase();
+  const matches = showMatches
+    ? directoryJobs
+        .filter((job) =>
+          `${job.customer} ${job.jobNumber} ${job.address} ${job.projectManager}`
+            .toLowerCase()
+            .includes(query),
+        )
+        .slice(0, 6)
+    : [];
+  const matchListId = `${customerId}-matches`;
+
+  const chooseJob = (job: JobEntry) => {
+    setJobId(job.id);
+    setCustomerText(jobLabel(job));
+    setMatchListOpen(false);
+    setCustomerError("");
+  };
 
   useEffect(
     () => () => {
@@ -359,12 +392,12 @@ export default function SimpleRequest(
 
   const submit = async () => {
     if (busy) return;
-    const customer = (selectedJob?.customer ?? typedCustomer).trim();
+    const customer = (selectedJob?.customer ?? customerText).trim();
     const nextCustomerError = customer
       ? ""
       : fallbackCustomer
         ? "Enter the customer or project owner."
-        : "Choose a customer from the list.";
+        : "Type a customer or pick a job from the list.";
     const nextContentError =
       note.trim() || photos.length
         ? ""
@@ -487,73 +520,105 @@ export default function SimpleRequest(
 
         <section className="sr-section">
           <h2 className="sr-section-title">Customer</h2>
-          {fallbackCustomer ? (
-            <>
-              <label className="sr-label" htmlFor={customerId}>
-                Customer / project owner
-              </label>
-              <input
-                id={customerId}
-                className="sr-input"
-                type="text"
-                value={typedCustomer}
-                disabled={busy}
-                aria-label="Customer / project owner"
-                aria-required="true"
-                aria-invalid={Boolean(customerError)}
-                onChange={(event) => {
-                  setTypedCustomer(event.target.value);
-                  setCustomerError("");
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <label className="sr-label" htmlFor={customerId}>
-                Customer
-              </label>
-              <select
-                id={customerId}
-                className="sr-select"
-                value={jobId}
-                disabled={busy}
-                aria-label="Customer"
-                aria-required="true"
-                aria-invalid={Boolean(customerError)}
-                onChange={(event) => {
-                  setJobId(event.target.value);
-                  setCustomerError("");
-                }}
-              >
-                <option value="">Select a job…</option>
-                {directoryJobs.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {`${job.customer || "No customer name"} — ${job.jobNumber || "no job number"}`}
-                  </option>
+          <div
+            className="sr-combo"
+            onBlur={(event) => {
+              // Close only when focus leaves the field and its suggestions, so a
+              // tap on a suggestion never tears the list down first.
+              if (!event.currentTarget.contains(event.relatedTarget as Node))
+                setMatchListOpen(false);
+            }}
+          >
+            <label className="sr-label" htmlFor={customerId}>
+              {fallbackCustomer ? "Customer / project owner" : "Customer / job"}
+            </label>
+            <input
+              id={customerId}
+              className="sr-input"
+              type="text"
+              value={customerText}
+              disabled={busy}
+              autoComplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={showMatches}
+              aria-controls={showMatches ? matchListId : undefined}
+              placeholder={
+                fallbackCustomer
+                  ? "Customer or project owner"
+                  : "Type a customer, job number, or address…"
+              }
+              aria-label={
+                fallbackCustomer ? "Customer / project owner" : "Customer / job"
+              }
+              aria-required="true"
+              aria-invalid={Boolean(customerError)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setCustomerText(value);
+                setCustomerError("");
+                // Typing over a pick means the chosen job no longer applies.
+                if (selectedJob && value !== selectedLabel) setJobId("");
+                setMatchListOpen(true);
+              }}
+              onFocus={() => setMatchListOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setMatchListOpen(false);
+                  return;
+                }
+                // Enter takes the top match rather than submitting the form.
+                if (event.key === "Enter" && matches.length) {
+                  event.preventDefault();
+                  chooseJob(matches[0]);
+                }
+              }}
+            />
+            {showMatches ? (
+              <ul className="sr-matches" id={matchListId}>
+                {matches.map((job) => (
+                  <li key={job.id}>
+                    <button
+                      type="button"
+                      className="sr-match"
+                      aria-label={`Use job ${job.jobNumber || "without a number"} for ${job.customer || "this customer"}`}
+                      onClick={() => chooseJob(job)}
+                    >
+                      <strong>{job.customer || "No customer name"}</strong>
+                      <span>{job.jobNumber || "No job number"}</span>
+                      {job.address ? <small>{job.address}</small> : null}
+                    </button>
+                  </li>
                 ))}
-              </select>
-              {selectedJob ? (
-                <dl className="sr-summary">
-                  <div>
-                    <dt>Customer</dt>
-                    <dd>{selectedJob.customer || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Job number</dt>
-                    <dd>{selectedJob.jobNumber || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Address</dt>
-                    <dd>{selectedJob.address || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Project manager</dt>
-                    <dd>{selectedJob.projectManager || "—"}</dd>
-                  </div>
-                </dl>
-              ) : null}
-            </>
-          )}
+                {!matches.length ? (
+                  <li className="sr-match-empty">
+                    No job matches “{customerText.trim()}”. You can still send
+                    this with the customer name alone.
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+            {selectedJob ? (
+              <dl className="sr-summary">
+                <div>
+                  <dt>Customer</dt>
+                  <dd>{selectedJob.customer || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Job number</dt>
+                  <dd>{selectedJob.jobNumber || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Address</dt>
+                  <dd>{selectedJob.address || "—"}</dd>
+                </div>
+                <div>
+                  <dt>Project manager</dt>
+                  <dd>{selectedJob.projectManager || "—"}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </div>
           {customerError ? (
             <p className="sr-error" role="alert">
               {customerError}
