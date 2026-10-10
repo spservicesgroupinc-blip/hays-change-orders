@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PDFDocument } from "pdf-lib";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.js";
 import { generateDocuments } from "../src/services/pdfGenerate";
-import { createChange } from "../src/types";
+import { createChange, createDraft } from "../src/types";
 import { validDraft } from "./helpers";
 async function contents(blob: Blob) {
   const doc = await pdfjs.getDocument({
@@ -69,8 +69,37 @@ test("long summaries and many items paginate without losing the last item or rea
   assert.ok(text.includes("Additional item 34"));
   assert.ok(text.includes("Reason 34"));
 });
-test("invalid or unconfirmed orders cannot generate even through the service", async () => {
+test("unconfirmed and malformed input still generates a packet", async () => {
   const d = validDraft();
   d.changes[0].pricingConfirmed = false;
-  await assert.rejects(generateDocuments(d), /confirm the pricing/);
+  d.job.customer = "";
+  d.job.date = "";
+  d.job.originalContract = "";
+  d.job.addedDays = "";
+  d.changes[0].rate = "not a number";
+  d.changes[0].tax = "";
+  const docs = await generateDocuments(d);
+  const text = await contents(docs.combined);
+  assert.ok(text.includes("Attachment A"));
+  assert.ok(text.includes("$0.00"));
+});
+test("a completely blank order generates form, attachment, and combined PDFs", async () => {
+  const docs = await generateDocuments(createDraft());
+  const form = await PDFDocument.load(await docs.form.arrayBuffer());
+  const attachment = await PDFDocument.load(
+    await docs.attachment.arrayBuffer(),
+  );
+  const combined = await PDFDocument.load(await docs.combined.arrayBuffer());
+  assert.equal(form.getPageCount(), 1);
+  assert.equal(
+    combined.getPageCount(),
+    form.getPageCount() + attachment.getPageCount(),
+  );
+  const text = await contents(docs.combined);
+  for (const expected of [
+    "Change Order / Addendum",
+    "Attachment A",
+    "0 working days",
+  ])
+    assert.ok(text.includes(expected), expected);
 });

@@ -4,12 +4,14 @@ import {
   cents,
   subtotal,
   calculateChange,
+  safeChange,
+  safeTotals,
   totals,
   validationErrors,
   sumDecimals,
   baselineProblems,
 } from "../src/services/pricing";
-import { createChange } from "../src/types";
+import { createChange, createDraft } from "../src/types";
 import { validDraft } from "./helpers";
 test("decimal multiplication rounds half cents consistently without floating point drift", () => {
   assert.equal(cents("1.005"), 101);
@@ -89,6 +91,31 @@ test("split unit rates retain decimal precision before extending the quantity", 
   assert.equal(sumDecimals(["0.005", "0.005", "-0.001"]), "0.009");
   assert.equal(subtotal("100", sumDecimals(["0.005", "0.005"])), 100);
   assert.equal(sumDecimals(["0.00", "-692.08"]), "-692.08");
+});
+
+test("rendering math treats missing or malformed values as zero instead of failing", () => {
+  assert.deepEqual(safeTotals(createDraft()), {
+    net: 0,
+    original: 0,
+    previous: 0,
+    prior: 0,
+    revised: 0,
+  });
+  const d = validDraft();
+  assert.deepEqual(safeChange(d.changes[0]), calculateChange(d.changes[0]));
+  assert.deepEqual(safeTotals(d), totals(d));
+  d.job.originalContract = "not money";
+  d.job.previousChanges = "";
+  d.changes[0].quantity = "";
+  d.changes[0].customerPrice = { total: "", tax: "", op: "" };
+  const safe = safeTotals(d);
+  assert.equal(safe.original, 0);
+  assert.equal(safe.previous, 0);
+  assert.equal(safe.net, -22400);
+  // An unreadable revised amount still prints the printed RCV baseline.
+  assert.equal(safeChange(d.changes[0]).original, 22400);
+  assert.equal(safeChange(d.changes[0]).revised, 0);
+  assert.throws(() => totals(d));
 });
 
 test("existing estimate credits can be confirmed, revised, or removed", () => {

@@ -7,13 +7,12 @@ import {
 } from "pdf-lib";
 import type { ChangeOrderDraft } from "../types";
 import {
-  calculateChange,
-  cents,
   money,
-  signedMoney,
-  totals,
+  safeCents,
+  safeChange,
+  safeTotals,
   scopeText,
-  validationErrors,
+  signedMoney,
 } from "./pricing";
 export interface GeneratedDocuments {
   combined: Blob;
@@ -150,13 +149,23 @@ function header(
 function blob(bytes: Uint8Array) {
   return new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
 }
+// The estimator decides when a packet is good enough to generate. Nothing here
+// may block on missing or malformed data: blank values print blank and amounts
+// that cannot be parsed print as $0.00.
+export function documentStem(draft: ChangeOrderDraft): string {
+  const part = (value: string) =>
+    value.replace(/[^A-Za-z0-9_-]/g, "_").replace(/^_+|_+$/g, "");
+  const stem = [part(draft.job.jobNumber), part(draft.job.orderNumber)]
+    .filter(Boolean)
+    .join("_");
+  return stem || "change-order";
+}
 export async function generateDocuments(
   draft: ChangeOrderDraft,
 ): Promise<GeneratedDocuments> {
-  const errors = validationErrors(draft);
-  if (errors.length) throw new Error(errors.join(" "));
-  const summary = totals(draft);
+  const summary = safeTotals(draft);
   const scope = scopeText(draft);
+  const workingDays = draft.job.addedDays.trim() || "0";
   const form = await PDFDocument.create();
   const font = await form.embedFont(StandardFonts.Helvetica),
     bold = await form.embedFont(StandardFonts.HelveticaBold);
@@ -179,7 +188,7 @@ export async function generateDocuments(
   y -= 36;
   field("Job number", draft.job.jobNumber, 44, 145);
   field("Project manager", draft.job.projectManager, 220, 160);
-  field("Added working days", draft.job.addedDays, 404, 164);
+  field("Added working days", workingDays, 404, 164);
   y -= 36;
   field("Property address", draft.job.address, 44, 524);
   y -= 36;
@@ -291,7 +300,7 @@ export async function generateDocuments(
   });
   text(
     page,
-    `The contract time will be increased by ${draft.job.addedDays} working days.`,
+    `The contract time will be increased by ${workingDays} working days.`,
     44,
     193,
     bold,
@@ -446,14 +455,14 @@ export async function generateDocuments(
       );
     ay -= 8;
     pricingHeader();
-    const amounts = calculateChange(row);
+    const amounts = safeChange(row);
     const values: [string, string, string, string, string, string][] = [
       [
         "Original",
         row.original ? `${row.original.quantity} ${row.original.unit}` : "-",
         row.original ? `$${row.original.rate}` : "-",
-        money(row.original ? cents(row.original.tax) : 0),
-        money(row.original ? cents(row.original.op) : 0),
+        money(row.original ? safeCents(row.original.tax) : 0),
+        money(row.original ? safeCents(row.original.op) : 0),
         money(amounts.original),
       ],
       [
@@ -477,19 +486,19 @@ export async function generateDocuments(
           : row.customerPrice
             ? row.customerPrice.tax === null
               ? "Included"
-              : money(cents(row.customerPrice.tax))
+              : money(safeCents(row.customerPrice.tax))
             : row.action === "remove"
               ? money(0)
-              : money(cents(row.tax)),
+              : money(safeCents(row.tax)),
         row.manualCredit !== undefined
           ? "Included"
           : row.customerPrice
             ? row.customerPrice.op === null
               ? "Included"
-              : money(cents(row.customerPrice.op))
+              : money(safeCents(row.customerPrice.op))
             : row.action === "remove"
               ? money(0)
-              : money(cents(row.op)),
+              : money(safeCents(row.op)),
         money(amounts.revised),
       ],
     ];

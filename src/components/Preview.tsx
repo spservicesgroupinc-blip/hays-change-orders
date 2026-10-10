@@ -3,14 +3,10 @@ import { Download, Printer, FileCheck2 } from "lucide-react";
 import type { ChangeOrderDraft } from "../types";
 import {
   generateDocuments,
+  documentStem,
   type GeneratedDocuments,
 } from "../services/pdfGenerate";
-import {
-  money,
-  signedMoney,
-  totals,
-  validationErrors,
-} from "../services/pricing";
+import { money, safeTotals, signedMoney } from "../services/pricing";
 import PdfViewer from "./PdfViewer";
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -27,19 +23,19 @@ export default function Preview({ draft }: { draft: ChangeOrderDraft }) {
     "combined",
   );
   const [url, setUrl] = useState("");
-  const errors = validationErrors(draft);
+  // Generating never waits on the review: blank fields print blank and amounts
+  // that cannot be parsed print as $0.00.
   useEffect(() => {
     let active = true;
     setDocuments(null);
     setError("");
-    if (!errors.length)
-      void generateDocuments(draft)
-        .then((docs) => {
-          if (active) setDocuments(docs);
-        })
-        .catch((e) => {
-          if (active) setError(e.message);
-        });
+    void generateDocuments(draft)
+      .then((docs) => {
+        if (active) setDocuments(docs);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
     return () => {
       active = false;
     };
@@ -50,22 +46,8 @@ export default function Preview({ draft }: { draft: ChangeOrderDraft }) {
     setUrl(next);
     return () => URL.revokeObjectURL(next);
   }, [documents, tab]);
-  if (errors.length)
-    return (
-      <div className="notice danger" role="alert">
-        <strong>Finish the review before generating documents</strong>
-        <ul>
-          {errors.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-      </div>
-    );
-  const summary = totals(draft);
-  const stem = `${draft.job.jobNumber}_${draft.job.orderNumber}`.replace(
-    /[^A-Za-z0-9_-]/g,
-    "_",
-  );
+  const summary = safeTotals(draft);
+  const stem = documentStem(draft);
   return (
     <>
       <div className="export-heading">
@@ -94,7 +76,7 @@ export default function Preview({ draft }: { draft: ChangeOrderDraft }) {
         <div>
           <small>WORKING DAYS ADDED</small>
           <strong>
-            {draft.job.addedDays} <span>days</span>
+            {draft.job.addedDays || "0"} <span>days</span>
           </strong>
         </div>
       </div>

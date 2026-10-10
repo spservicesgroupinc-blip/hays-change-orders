@@ -16,7 +16,7 @@ Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist
 
 1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. Drafts autosave as you type.
 2. **Estimators** claim requests from the shared queue, review the PM's scope and quoted subcontractor costs, then price each work area — either as a final all-in customer price (tax and O&P included) or as retained quantity/rate line items. Replace several original items with a quoted lump sum, or enter a manual credit.
-3. Estimators confirm the contract amounts, previous authorized changes, insurance details, change-order number/date, and added working days, then mark the request ready.
+3. Estimators fill in the contract amounts, previous authorized changes, insurance details, change-order number/date, and added working days as they become available. Nothing blocks the review: mark the request ready at any point, and blank details print blank with unreadable amounts printed as $0.00.
 4. Completed requests become read-only; preview, print, or download the Hays cover, Attachment A, and combined packet. Subcontractor costs, quote PDFs, vendor details, and internal notes never appear in customer documents.
 
 Legacy change orders from the previous four-step editor remain in a separate section: open them to finish, or convert one into a shared request (its PDFs are copied and prior pricing carried forward for estimator review).

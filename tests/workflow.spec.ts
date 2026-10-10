@@ -664,6 +664,67 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
   expect(runtimeErrors).toEqual([]);
 });
 
+test("an estimator can mark ready and generate with no data entered at all", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  // Submit the bare minimum: one work area, no job details, no estimate, no files.
+  await page
+    .getByRole("button", {
+      name: "Add another work area / change",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Replace the damaged lower cabinets.");
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Claim this request", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Estimator name", { exact: true }).fill("QA Estimator");
+  await page
+    .getByRole("button", { name: "Claim this request", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Turn the field request into a customer change order.",
+    }),
+  ).toBeVisible();
+  // The review is never locked and never lists blockers.
+  await expect(
+    page.getByText("Complete these items before marking the order ready"),
+  ).toHaveCount(0);
+  const ready = page.getByRole("button", {
+    name: "Mark ready for customer",
+    exact: true,
+  });
+  await expect(ready).toBeEnabled();
+  await page.screenshot({
+    path: "tmp/estimator-review-fixed.png",
+    fullPage: true,
+  });
+  await page
+    .locator(".ew-ready-panel")
+    .screenshot({ path: "tmp/estimator-review-panel.png" });
+  await ready.click();
+  await expect(
+    page.getByRole("button", { name: "Download packet", exact: true }),
+  ).toBeVisible({ timeout: 15000 });
+  const downloading = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download packet", exact: true })
+    .click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe("CO-01_Change_Order_Packet.pdf");
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("a request sent back for information links the PM straight into the change order", async ({
   page,
 }) => {

@@ -363,31 +363,31 @@ test("PM submissions are permissive — any fields may be missing", () => {
   assert.deepEqual(submissionErrors(request), []);
   assert.deepEqual(submissionErrors(createRequest()), []);
 });
-test("readiness validates coverage, duplicate baselines, contract and customer scope confirmations", () => {
+test("readiness never blocks, however little data has been entered", () => {
+  assert.deepEqual(readyErrors(createRequest()), []);
+  assert.deepEqual(readyErrors(validRequest()), []);
   const request = validRequest();
-  assert.deepEqual(readyErrors(request), []);
+  request.estimatorName = "";
+  request.contractConfirmed = false;
+  request.customerScopeConfirmed = false;
+  request.job.customer = "";
+  request.job.date = "2026-02-31";
+  request.job.originalContract = "";
+  request.job.addedDays = "";
+  request.pricedItems[0].pricingConfirmed = false;
+  request.pricedItems[0].original!.reviewed = false;
+  request.pricedItems[0].requestChangeId = "";
+  request.pricedItems.push({
+    ...structuredClone(request.pricedItems[0]),
+    id: randomUUID(),
+  });
   request.requestedChanges.push({
     ...createRequestedChange(),
     room: "Kitchen",
     description: "Remove cabinet",
     reason: "Damage",
   });
-  assert.ok(readyErrors(request).some((error) => /exclusion/i.test(error)));
-  request.exclusions[request.requestedChanges[1].id] = "No change required";
   assert.deepEqual(readyErrors(request), []);
-  request.pricedItems.push({
-    ...structuredClone(request.pricedItems[0]),
-    id: randomUUID(),
-  });
-  assert.ok(
-    readyErrors(request).some((error) => /only be priced once/i.test(error)),
-  );
-  request.contractConfirmed = false;
-  request.customerScopeConfirmed = false;
-  assert.ok(
-    readyErrors(request).some((error) => /contract amounts/i.test(error)),
-  );
-  assert.ok(readyErrors(request).some((error) => /scope summary/i.test(error)));
 });
 test("customer draft projection does not contain vendor costs, internal notes or source text", () => {
   const request = validRequest();
@@ -573,7 +573,7 @@ test("submitted queue claims have one winner and requests for information return
   assert.equal(request.estimatorName, "Estimator A");
   assert.equal(request.informationQuestion, "");
 });
-test("server requires readiness and makes Ready records immutable", () => {
+test("server accepts readiness at any point and makes Ready records immutable", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
   request = backend.post({
@@ -600,19 +600,9 @@ test("server requires readiness and makes Ready records immutable", () => {
       question: "",
       mutationId: randomUUID(),
     });
-  assert.equal(transition().code, "VALIDATION");
-  const valid = validRequest();
-  Object.assign(request, {
-    pricedItems: valid.pricedItems.map((row) => ({
-      ...row,
-      requestChangeId: request.requestedChanges[0].id,
-    })),
-    customerScope: valid.customerScope,
-    customerScopeEdited: true,
-    customerScopeConfirmed: true,
-    contractConfirmed: true,
-  });
-  request = save(backend, request).request;
+  // Nothing is confirmed, priced, or filled in beyond the claim itself.
+  assert.equal(request.pricedItems.length, 0);
+  assert.equal(request.contractConfirmed, false);
   request = transition().request;
   assert.equal(request.status, "ready");
   assert.equal(save(backend, request).code, "STATE");

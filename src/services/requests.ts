@@ -9,7 +9,6 @@ import {
   type EstimateItem,
   type JobDetails,
 } from "../types";
-import { validationErrors } from "./pricing";
 
 export function createRequest(): ChangeRequest {
   const legacy = createDraft();
@@ -155,34 +154,12 @@ export function requestToDraft(request: ChangeRequest): ChangeOrderDraft {
     scopeEdited: request.customerScopeEdited,
   };
 }
-export function readyErrors(request: ChangeRequest): string[] {
-  const errors = submissionErrors(request);
-  if (!request.estimatorName.trim())
-    errors.push("An estimator must claim this request.");
-  if (!request.contractConfirmed)
-    errors.push("Confirm the contract amounts and working days.");
-  if (!request.customerScopeConfirmed)
-    errors.push("Confirm the customer-facing scope summary.");
-  const ids = new Set(request.requestedChanges.map((change) => change.id));
-  const originals = new Set<string>();
-  for (const row of request.pricedItems) {
-    if (!row.requestChangeId || !ids.has(row.requestChangeId))
-      errors.push("Link every priced item to an existing requested change.");
-    if (row.original) {
-      if (originals.has(row.original.id))
-        errors.push("Each original estimate item can only be priced once.");
-      originals.add(row.original.id);
-    }
-  }
-  request.requestedChanges.forEach((change, i) => {
-    if (
-      !request.pricedItems.some((row) => row.requestChangeId === change.id) &&
-      !request.exclusions[change.id]?.trim()
-    )
-      errors.push(`Change ${i + 1}: add pricing or an exclusion reason.`);
-  });
-  errors.push(...validationErrors(requestToDraft(request)));
-  return [...new Set(errors)];
+// The estimator decides when an order is ready. Anything still blank prints
+// blank in the packet and any amount that cannot be parsed prints as $0.00, so
+// readiness never blocks on missing data — no confirmations, no required job
+// details, no coverage of every requested change.
+export function readyErrors(_request: ChangeRequest): string[] {
+  return [];
 }
 export function invalidateIntakeChanges(
   old: ChangeRequest,

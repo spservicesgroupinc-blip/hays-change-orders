@@ -410,47 +410,6 @@ function commitRequest_(request, row, snapshot, mutationId, existingFolder) {
   SpreadsheetApp.flush();
   return json_({ ok: true, request: request });
 }
-function decimal_(value, signed) {
-  if (typeof value !== "string" || !/^-?\d+(?:\.\d{1,6})?$/.test(value.trim())) return false;
-  const number = Number(value); return Number.isFinite(number) && Math.abs(number) <= 10000000000 && (signed || number >= 0);
-}
-function moneyCents_(value) {
-  if (!decimal_(value, true)) throw new Error("Invalid decimal.");
-  const parts = decimalParts_(value);
-  return roundDecimalCents_(parts.digits, parts.places, parts.negative);
-}
-function subtotalCents_(quantity, rate) {
-  if (!decimal_(quantity, false) || !decimal_(rate, true)) throw new Error("Invalid decimal.");
-  const q = decimalParts_(quantity); const r = decimalParts_(rate);
-  return roundDecimalCents_(multiplyDigits_(q.digits, r.digits), q.places + r.places, q.negative !== r.negative);
-}
-function decimalParts_(value) {
-  const text = value.trim(); const negative = text.charAt(0) === "-";
-  const parts = (negative ? text.slice(1) : text).split("."); const decimal = parts[1] || "";
-  return { digits: (parts[0] + decimal).replace(/^0+(?=\d)/, ""), places: decimal.length, negative: negative };
-}
-function multiplyDigits_(left, right) {
-  const result = Array(left.length + right.length).fill(0);
-  for (let i = left.length - 1; i >= 0; i--) for (let j = right.length - 1; j >= 0; j--) result[i + j + 1] += Number(left.charAt(i)) * Number(right.charAt(j));
-  for (let k = result.length - 1; k > 0; k--) { result[k - 1] += Math.floor(result[k] / 10); result[k] %= 10; }
-  return result.join("").replace(/^0+(?=\d)/, "");
-}
-function incrementDigits_(digits) {
-  const result = digits.split(""); let carry = 1;
-  for (let i = result.length - 1; i >= 0 && carry; i--) { const sum = Number(result[i]) + carry; result[i] = String(sum % 10); carry = Math.floor(sum / 10); }
-  if (carry) result.unshift("1"); return result.join("");
-}
-function roundDecimalCents_(digits, places, negative) {
-  let centsDigits;
-  if (places <= 2) centsDigits = digits + "0".repeat(2 - places);
-  else {
-    const discard = places - 2; const padded = digits.padStart(discard + 1, "0"); centsDigits = padded.slice(0, -discard);
-    if (Number(padded.charAt(padded.length - discard)) >= 5) centsDigits = incrementDigits_(centsDigits);
-  }
-  const magnitude = Number(centsDigits);
-  if (!Number.isSafeInteger(magnitude) || magnitude > 1000000000000) throw new Error("Amount is too large.");
-  return negative ? -magnitude : magnitude;
-}
 function submissionErrors_(request) {
   // A request may be submitted with any data. Estimators review the scope and
   // ask for information instead, so submission blocks on nothing — no required
@@ -458,52 +417,11 @@ function submissionErrors_(request) {
   return [];
 }
 function readyErrors_(request) {
-  const errors = submissionErrors_(request); const job = request.job;
-  if (!request.estimatorName.trim()) errors.push("An estimator must claim this request.");
-  if (!request.contractConfirmed) errors.push("Confirm the contract amounts and working days.");
-  if (!request.customerScopeConfirmed || !request.customerScope.trim()) errors.push("Confirm the customer-facing scope summary.");
-  ["branchName", "branchAddress", "branchPhone", "branchContact", "orderNumber", "date"].forEach(function(key) { if (!String(job[key] || "").trim()) errors.push(key + " is required."); });
-  if (job.insuranceRelated && (!job.carrier.trim() || !job.claim.trim())) errors.push("Enter the carrier and claim number.");
-  const date = new Date(job.date + "T12:00:00Z");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(job.date) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== job.date) errors.push("Enter a valid change-order date.");
-  if (!decimal_(job.originalContract, false) || !decimal_(job.previousChanges, true)) errors.push("Enter valid contract amounts.");
-  if (!/^\d+$/.test(job.addedDays) || Number(job.addedDays) > 3650) errors.push("Enter valid added working days.");
-  if (!request.pricedItems.length) errors.push("Add at least one priced item.");
-  const originalIds = {}; let net = 0;
-  request.requestedChanges.forEach(function(change, index) { if (!request.pricedItems.some(function(row) { return row.requestChangeId === change.id; }) && !String(request.exclusions[change.id] || "").trim()) errors.push("Change " + (index + 1) + ": add pricing or an exclusion reason."); });
-  request.pricedItems.forEach(function(row, index) {
-    const prefix = "Item " + (index + 1) + ": ";
-    if (!request.requestedChanges.some(function(change) { return change.id === row.requestChangeId; })) errors.push(prefix + "link to an existing requested change.");
-    if (!String(row.description || "").trim() || !String(row.reason || "").trim() || !row.pricingConfirmed) errors.push(prefix + "enter customer description/reason and confirm pricing.");
-    const original = row.original;
-    if (original) {
-      if (originalIds[original.id]) errors.push(prefix + "original item is priced twice."); originalIds[original.id] = true;
-      if (!original.reviewed || !String(original.description || "").trim() || !String(original.unit || "").trim() || ["quantity", "rate", "tax", "op", "rcv"].some(function(key) { return !decimal_(original[key], key !== "quantity"); })) errors.push(prefix + "review original estimate values.");
-    }
-    try {
-      const baseline = original ? moneyCents_(original.rcv) : 0; let revised;
-      if (row.action === "remove") {
-        if (original) revised = 0;
-        else if (decimal_(row.manualCredit, false) && moneyCents_(row.manualCredit) > 0) revised = -moneyCents_(row.manualCredit);
-        else throw new Error("Enter a positive credit.");
-      } else if (row.customerPrice) {
-        if (!decimal_(row.customerPrice.total, baseline < 0)) throw new Error("Invalid customer total.");
-        ["tax", "op"].forEach(function(key) { if (row.customerPrice[key] !== null && !decimal_(row.customerPrice[key], baseline < 0)) throw new Error("Invalid included breakdown."); });
-        revised = moneyCents_(row.customerPrice.total);
-        const tax = row.customerPrice.tax === null ? 0 : moneyCents_(row.customerPrice.tax);
-        const op = row.customerPrice.op === null ? 0 : moneyCents_(row.customerPrice.op);
-        if (baseline >= 0 && tax + op > revised) throw new Error("Included tax/O&P exceed customer total.");
-      } else {
-        if (!String(row.unit || "").trim() || ["quantity", "rate", "tax", "op"].some(function(key) { return !decimal_(row[key], key !== "quantity" && baseline < 0); })) throw new Error("Invalid item pricing.");
-        const base = subtotalCents_(row.quantity, row.rate);
-        revised = original ? baseline + base - subtotalCents_(original.quantity, original.rate) + moneyCents_(row.tax) - moneyCents_(original.tax) + moneyCents_(row.op) - moneyCents_(original.op) : base + moneyCents_(row.tax) + moneyCents_(row.op);
-      }
-      if (revised < 0 && baseline >= 0 && row.action !== "remove") throw new Error("Invalid negative revised total.");
-      net += revised - baseline;
-    } catch (error) { errors.push(prefix + "correct pricing values."); }
-  });
-  try { if (moneyCents_(job.originalContract) + moneyCents_(job.previousChanges) + net < 0) errors.push("The revised contract amount cannot be negative."); } catch (error) { /* field errors already above */ }
-  return errors;
+  // The estimator decides when an order is ready. Missing details print blank
+  // in the packet and amounts that cannot be parsed print as $0.00, so marking
+  // an order ready never blocks on missing data — no confirmations, no required
+  // job details, and no coverage of every requested change.
+  return [];
 }
 function shapeCheck_(request) {
   if (!request || request.schemaVersion !== 2 || !request.id || typeof request.id !== "string" || request.id.length > 100 || !request.job) problem_("VALIDATION", "A valid version-2 request is required.");

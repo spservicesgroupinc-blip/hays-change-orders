@@ -22,11 +22,11 @@ import {
   cents,
   generatedScope,
   money,
+  safeTotals,
   signedMoney,
-  totals,
   validDecimal,
 } from "../services/pricing";
-import { readyErrors, requestToDraft } from "../services/requests";
+import { requestToDraft } from "../services/requests";
 import "./EstimatorWorkspace.css";
 
 const Preview = lazy(() => import("./Preview"));
@@ -144,13 +144,9 @@ export default function EstimatorWorkspace({
   const customerScope = request.customerScopeEdited
     ? request.customerScope
     : generatedScope(request.pricedItems);
-  const errors = readyErrors(request);
-  let summary: ReturnType<typeof totals> | null = null;
-  try {
-    summary = totals(draft);
-  } catch {
-    /* incomplete pricing stays blank */
-  }
+  // The packet shows missing or unparseable amounts as $0.00, so the sidebar
+  // mirrors that instead of hiding the totals until every value is valid.
+  const summary = safeTotals(draft);
   const apply = (next: ChangeRequest) => {
     if (editable) onChange(next);
   };
@@ -1031,11 +1027,11 @@ export default function EstimatorWorkspace({
             <dl className="ew-total-list">
               <div>
                 <dt>This change order</dt>
-                <dd>{summary ? signedMoney(summary.net) : "Incomplete"}</dd>
+                <dd>{signedMoney(summary.net)}</dd>
               </div>
               <div>
                 <dt>Revised contract</dt>
-                <dd>{summary ? money(summary.revised) : "Incomplete"}</dd>
+                <dd>{money(summary.revised)}</dd>
               </div>
               <div>
                 <dt>Added working days</dt>
@@ -1111,24 +1107,15 @@ export default function EstimatorWorkspace({
               </section>
               <section className="ew-panel ew-ready-panel">
                 <h3>Finish estimator review</h3>
-                {errors.length ? (
-                  <>
-                    <p>Complete these items before marking the order ready:</p>
-                    <ul className="ew-errors">
-                      {errors.map((error) => (
-                        <li key={error}>{error}</li>
-                      ))}
-                    </ul>
-                  </>
-                ) : (
-                  <p>
-                    All requested work is accounted for and customer pricing is
-                    confirmed.
-                  </p>
-                )}
+                <p>
+                  Mark this order ready whenever you have entered as much as you
+                  know. Blank details print blank and amounts that cannot be
+                  read print as $0.00, and you can keep correcting the review
+                  until the order is completed.
+                </p>
                 <button
                   className="button primary full"
-                  disabled={!editable || errors.length > 0}
+                  disabled={!editable}
                   onClick={onReady}
                 >
                   <CheckCircle2 size={16} />

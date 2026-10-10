@@ -515,12 +515,11 @@ export default function App() {
       await flush();
       const request = editor.current;
       const draft = requestToDraft(request);
-      const { generateDocuments } = await import("./services/pdfGenerate");
-      const docs = await generateDocuments(draft);
-      const stem = `${draft.job.jobNumber}_${draft.job.orderNumber}`.replace(
-        /[^A-Za-z0-9_-]/g,
-        "_",
+      const { generateDocuments, documentStem } = await import(
+        "./services/pdfGenerate"
       );
+      const docs = await generateDocuments(draft);
+      const stem = documentStem(draft);
       const documents = await Promise.all(
         (
           [

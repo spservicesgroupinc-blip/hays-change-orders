@@ -151,6 +151,68 @@ export function totals(draft: ChangeOrderDraft) {
     revised: original + previous + net,
   };
 }
+// Estimators may generate the customer packet as soon as they want, so the
+// rendering math below treats missing or malformed input as $0.00 instead of
+// failing. The editing math above stays strict so the estimator still sees
+// exactly which value needs attention.
+export function safeCents(value: string): number {
+  try {
+    return cents(value);
+  } catch {
+    return 0;
+  }
+}
+function safeSubtotal(quantity: string, rate: string): number {
+  try {
+    return subtotal(quantity, rate);
+  } catch {
+    return 0;
+  }
+}
+export function safeChange(item: ChangeItem): {
+  original: number;
+  revised: number;
+  delta: number;
+} {
+  const original = item.original ? safeCents(item.original.rcv) : 0;
+  if (item.manualCredit !== undefined) {
+    const credit = safeCents(item.manualCredit);
+    const revised = credit > 0 ? -credit : 0;
+    return { original, revised, delta: revised };
+  }
+  if (item.action === "remove")
+    return { original, revised: 0, delta: -original };
+  if (item.customerPrice) {
+    const revised = safeCents(item.customerPrice.total);
+    return { original, revised, delta: revised - original };
+  }
+  const base = safeSubtotal(item.quantity, item.rate);
+  const revised = item.original
+    ? original +
+      base -
+      safeSubtotal(item.original.quantity, item.original.rate) +
+      safeCents(item.tax) -
+      safeCents(item.original.tax) +
+      safeCents(item.op) -
+      safeCents(item.original.op)
+    : base + safeCents(item.tax) + safeCents(item.op);
+  return { original, revised, delta: revised - original };
+}
+export function safeTotals(draft: ChangeOrderDraft) {
+  const net = draft.changes.reduce(
+    (sum, row) => sum + safeChange(row).delta,
+    0,
+  );
+  const original = safeCents(draft.job.originalContract);
+  const previous = safeCents(draft.job.previousChanges);
+  return {
+    net,
+    original,
+    previous,
+    prior: original + previous,
+    revised: original + previous + net,
+  };
+}
 export function generatedScope(changes: ChangeItem[]): string {
   return changes
     .map(
