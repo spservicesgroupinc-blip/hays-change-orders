@@ -233,6 +233,12 @@ export default function App() {
     null,
   );
   const [claimName, setClaimName] = useState("");
+  // Requests this window is working on as the estimator. A request waiting on
+  // the project manager stays in the estimator workspace here instead of
+  // dropping the estimator into the project manager's edit form.
+  const [estimatorSession, setEstimatorSession] = useState<
+    Record<string, true>
+  >({});
   const editorRef = useRef<RequestEditor | null>(null);
   const flushTimer = useRef<number | null>(null);
   const pendingFiles = useRef(
@@ -416,6 +422,7 @@ export default function App() {
         newId(),
       );
       editor.commit(server);
+      setEstimatorSession((map) => ({ ...map, [server.id]: true }));
       void refresh();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
@@ -788,7 +795,8 @@ export default function App() {
                 busy={busy === "Claiming…"}
               />
             ) : request.status === "draft" ||
-              request.status === "needs_information" ? (
+              (request.status === "needs_information" &&
+                !estimatorSession[request.id]) ? (
               <PMRequestForm
                 request={request}
                 jobs={jobs}
@@ -905,6 +913,12 @@ export default function App() {
                         {item.changesCount === 1 ? "change" : "changes"}
                         {item.estimatorName ? ` · ${item.estimatorName}` : ""}
                       </small>
+                      {item.status === "needs_information" ? (
+                        <span className="request-row-action">
+                          Add the requested information
+                          <ArrowRight size={13} />
+                        </span>
+                      ) : null}
                     </span>
                     <span className="request-row-meta">
                       {item.attachmentsCount > 0 ? (

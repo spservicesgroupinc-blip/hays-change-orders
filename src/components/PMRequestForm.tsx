@@ -1,5 +1,6 @@
 import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
   CheckCircle2,
   ChevronDown,
   FileText,
@@ -907,6 +908,19 @@ export default function PMRequestForm({
   const [uploadError, setUploadError] = useState("");
   const editable =
     request.status === "draft" || request.status === "needs_information";
+  const changesRef = useRef<HTMLElement | null>(null);
+  const goToRequestedDetails = () => {
+    const section = changesRef.current;
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    const fields = Array.from(
+      section.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled])',
+      ),
+    );
+    const target = fields.find((field) => !field.value.trim()) ?? fields[0];
+    target?.focus({ preventScroll: true });
+  };
   const change = (next: ChangeRequest) => onChange(next);
   const updateChange = (next: RequestedChange) =>
     change({
@@ -977,6 +991,14 @@ export default function PMRequestForm({
               "Please update the request details."}
           </blockquote>
           <p>Update the details or supporting files below, then resubmit.</p>
+          <button
+            type="button"
+            className="pm-information-action"
+            onClick={goToRequestedDetails}
+          >
+            Add the requested information
+            <ArrowDown size={15} />
+          </button>
         </div>
       ) : null}
       <section className="pm-section" aria-labelledby="pm-project-title">
@@ -1089,7 +1111,11 @@ export default function PMRequestForm({
           </div>
         </details>
       </section>
-      <section className="pm-section" aria-labelledby="pm-changes-title">
+      <section
+        className="pm-section"
+        aria-labelledby="pm-changes-title"
+        ref={changesRef}
+      >
         <div className="pm-section-heading">
           <div>
             <h2 id="pm-changes-title">What needs to change?</h2>

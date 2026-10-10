@@ -89,6 +89,20 @@
   font-size: 11px;
   color: #8b94a1;
 }
+.request-row-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #b91c1c;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.request-row:hover .request-row-action {
+  color: #8f1616;
+}
 .request-row-meta {
   display: flex;
   align-items: center;

@@ -350,10 +350,24 @@ export default function EstimatorWorkspace({
           ) : null}
         </>
       ) : null}
-      {!editable && request.status !== "ready" && request.status !== "completed" ? (
+      {request.status === "needs_information" ? (
+        <div className="notice warning" role="status">
+          <span>
+            <strong>Waiting on the project manager.</strong> You asked{" "}
+            {request.job.projectManager || "the project manager"} for more
+            information
+            {request.informationQuestion
+              ? `: “${request.informationQuestion}”`
+              : "."}{" "}
+            It stays paused and read-only here until they update the details and
+            resubmit.
+          </span>
+        </div>
+      ) : !editable &&
+        request.status !== "ready" &&
+        request.status !== "completed" ? (
         <div className="notice">
-          Claim this request to edit scope and pricing. Requests waiting for PM
-          information remain read-only.
+          Claim this request to edit scope and pricing.
         </div>
       ) : null}
 

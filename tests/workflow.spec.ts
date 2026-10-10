@@ -617,6 +617,74 @@ test("PM submits a text-only request and an estimator prices it to a ready packe
   expect(runtimeErrors).toEqual([]);
 });
 
+test("a request sent back for information links the PM straight into the change order", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await page.getByLabel("Job number", { exact: true }).fill("FW-INFO-001");
+  await page
+    .getByLabel("Customer / project owner", { exact: true })
+    .fill("Info Customer");
+  await page.getByLabel("Project manager", { exact: true }).fill("Info PM");
+  await page
+    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .click();
+  await page.getByLabel("Room / work area", { exact: true }).fill("Bathroom");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Replace the damaged vanity.");
+  await page
+    .getByRole("button", { name: "Submit to estimating", exact: true })
+    .click();
+  await page.getByLabel("Estimator name", { exact: true }).fill("QA Estimator");
+  await page
+    .getByRole("button", { name: "Claim this request", exact: true })
+    .click();
+  await page
+    .getByLabel("Question for the project manager")
+    .fill("Which vanity model is approved?");
+  await page.getByRole("button", { name: "Request information" }).click();
+  // The estimator stays in the estimator workspace instead of the PM form.
+  await expect(
+    page.locator(".notice.warning"),
+  ).toContainText("Waiting on the project manager.");
+  await expect(page.locator(".notice.warning")).toContainText(
+    "Which vanity model is approved?",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Tell estimating what changed." }),
+  ).toHaveCount(0);
+  // The project manager gets the notice as a link into the details.
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Tell estimating what changed." }),
+  ).toBeVisible();
+  const notice = page.locator(".pm-information-notice");
+  await expect(notice).toContainText("needs more information");
+  await expect(notice).toContainText("Which vanity model is approved?");
+  await page
+    .getByRole("button", { name: "Add the requested information" })
+    .click();
+  const changes = page.locator(".pm-section:has(#pm-changes-title)");
+  await expect(changes.locator(":focus")).toHaveCount(1);
+  // The requests list shows the same link and opens that change order.
+  await page.getByRole("button", { name: "All requests", exact: true }).click();
+  const row = page.locator(".request-row");
+  await expect(row).toContainText("Needs info");
+  await expect(row.locator(".request-row-action")).toContainText(
+    "Add the requested information",
+  );
+  await row.click();
+  await expect(page.locator(".pm-information-notice")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Tell estimating what changed." }),
+  ).toBeVisible();
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("an admin imports jobs, then the PM picker autofills the job details", async ({
   page,
 }) => {

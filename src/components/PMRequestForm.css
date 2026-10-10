@@ -568,6 +568,29 @@
   font-size: 12px;
   color: #81734f;
 }
+.pm-information-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid #e2c477;
+  border-radius: 8px;
+  background: #fff;
+  color: #7a5a12;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pm-information-action:hover {
+  background: #fff5dd;
+  border-color: #d8b559;
+}
+.pm-information-action:focus-visible {
+  outline: 2px solid #b91c1c;
+  outline-offset: 2px;
+}
 .pm-validation-summary {
   border: 1px solid #f0caca;
   background: #fff7f7;
