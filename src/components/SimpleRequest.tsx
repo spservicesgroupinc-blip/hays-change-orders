@@ -181,7 +181,9 @@ function PhotoTile({
   );
 }
 
-export default function SimpleRequest(props: SimpleRequestProps): React.ReactElement {
+export default function SimpleRequest(
+  props: SimpleRequestProps,
+): React.ReactElement {
   const { jobs, onDone } = props;
   // Only active directory rows are offered; without any, the page falls back to
   // a typed customer name so it still works.
@@ -192,9 +194,10 @@ export default function SimpleRequest(props: SimpleRequestProps): React.ReactEle
   const pdfInput = useRef<HTMLInputElement>(null);
   const recognition = useRef<SpeechRecognitionLike | null>(null);
   // The request + revision from a failed attempt, reused by the retry.
-  const savedAttempt = useRef<{ request: ChangeRequest; revision: number } | null>(
-    null,
-  );
+  const savedAttempt = useRef<{
+    request: ChangeRequest;
+    revision: number;
+  } | null>(null);
 
   const [jobId, setJobId] = useState("");
   const [typedCustomer, setTypedCustomer] = useState("");
@@ -404,7 +407,13 @@ export default function SimpleRequest(props: SimpleRequestProps): React.ReactEle
         );
       }
       setProgress("Submitting to estimating…");
-      await transitionRequest(saved.id, saved.revision, "submitted", "", newId());
+      await transitionRequest(
+        saved.id,
+        saved.revision,
+        "submitted",
+        "",
+        newId(),
+      );
       savedAttempt.current = null;
       onDone(
         `Sent to estimating: ${customer}${selectedJob?.jobNumber ? ` · job ${selectedJob.jobNumber}` : ""}.`,

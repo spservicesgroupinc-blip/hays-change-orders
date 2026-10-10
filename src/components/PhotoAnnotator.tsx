@@ -357,6 +357,7 @@ export default function PhotoAnnotator(
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
+  const confirmCancelRef = useRef<HTMLButtonElement | null>(null);
   const activePointerRef = useRef<number | null>(null);
   const shapesRef = useRef<Shape[]>([]);
   const viewRef = useRef<View>({
@@ -525,6 +526,11 @@ export default function PhotoAnnotator(
   useEffect(() => {
     if (pendingText && textInputRef.current) textInputRef.current.focus();
   }, [pendingText]);
+
+  // Clear confirmation takes focus, so a stray tap on Enter lands on "Keep them".
+  useEffect(() => {
+    if (clearOpen) confirmCancelRef.current?.focus();
+  }, [clearOpen]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -982,6 +988,7 @@ export default function PhotoAnnotator(
               <button
                 type="button"
                 className="photo-annotator-confirm-cancel"
+                ref={confirmCancelRef}
                 onClick={() => setClearOpen(false)}
               >
                 Keep them
