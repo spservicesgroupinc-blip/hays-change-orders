@@ -705,13 +705,6 @@ test("an estimator can mark ready and generate with no data entered at all", asy
     exact: true,
   });
   await expect(ready).toBeEnabled();
-  await page.screenshot({
-    path: "tmp/estimator-review-fixed.png",
-    fullPage: true,
-  });
-  await page
-    .locator(".ew-ready-panel")
-    .screenshot({ path: "tmp/estimator-review-panel.png" });
   await ready.click();
   await expect(
     page.getByRole("button", { name: "Download packet", exact: true }),
