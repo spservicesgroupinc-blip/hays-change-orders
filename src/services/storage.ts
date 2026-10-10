@@ -234,7 +234,13 @@ export async function openRequest(id: string): Promise<ChangeRequest> {
     action: "openRequest",
     id,
   });
-  return data.request;
+  const request = data?.request;
+  // A truncated response used to reach the renderer and blank the whole app.
+  // Failing here turns it into the ordinary "could not be opened" screen, which
+  // always offers a way back to the request list.
+  if (!request || typeof request !== "object" || !request.id || !request.job)
+    throw new Error("That change order could not be loaded.");
+  return request;
 }
 export async function saveRequest(
   request: ChangeRequest,

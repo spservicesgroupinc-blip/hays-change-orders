@@ -172,7 +172,9 @@ test("sections are linkable, survive a reload, and the brand returns home", asyn
     page.getByRole("heading", { name: "Manage the job list", exact: true }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "Hays + Sons change orders home" }).click();
+  await page
+    .getByRole("link", { name: "Hays + Sons change orders home" })
+    .click();
   await expect(dashboard(page)).toBeVisible();
   expect(new URL(page.url()).hash).toBe("#/");
 
@@ -183,6 +185,8 @@ test("sections are linkable, survive a reload, and the brand returns home", asyn
   await expect(
     page.getByRole("heading", { name: "Stored change orders", exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Hays + Sons change orders home" }).click();
+  await page
+    .getByRole("link", { name: "Hays + Sons change orders home" })
+    .click();
   await expect(dashboard(page)).toBeVisible();
 });

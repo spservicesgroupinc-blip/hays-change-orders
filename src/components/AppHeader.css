@@ -40,7 +40,9 @@
   background: #fef2f2;
   color: #b91c1c;
 }
-.app-menu-button {
+/* Scoped to beat the generic ".button" rule, which is bundled after this file
+   and would otherwise force the menu button onto the desktop header too. */
+.app-header .app-menu-button {
   display: none;
 }
 .app-header-sub {
@@ -114,7 +116,7 @@
 /* Narrow screens collapse the section links behind a menu button so the
    header keeps a comfortable tap target and never wraps into three rows. */
 @media (max-width: 860px) {
-  .app-menu-button {
+  .app-header .app-menu-button {
     display: inline-flex;
   }
   .app-nav {

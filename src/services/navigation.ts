@@ -128,6 +128,15 @@ export function readStoredView(): View {
   }
 }
 
+/** Forget the remembered view, so the next load starts at the dashboard. */
+export function clearStoredView(): void {
+  try {
+    localStorage.removeItem(VIEW_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
 export function persistView(view: View): void {
   try {
     // A one-shot "start a new draft" never survives a reload; the draft itself

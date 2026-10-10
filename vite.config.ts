@@ -18,6 +18,20 @@ export default defineConfig({
         display: "standalone",
         background_color: "#ffffff",
         theme_color: "#dc2626",
+        shortcuts: [
+          {
+            name: "Stored change orders",
+            short_name: "Change orders",
+            url: "/#/orders",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+          },
+          {
+            name: "Job directory",
+            short_name: "Jobs",
+            url: "/#/jobs",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+          },
+        ],
         icons: [
           {
             src: "/icons/icon-192.png",

@@ -386,6 +386,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // The shell restores scroll itself on every view change; without this the
+    // browser would fight it and land the user halfway down the previous screen.
+    if ("scrollRestoration" in window.history)
+      window.history.scrollRestoration = "manual";
+
     // The current entry becomes the dashboard, so backing out of a restored
     // deep link lands on the request list instead of leaving the app.
     const initial = viewRef.current;
@@ -944,7 +949,9 @@ export default function App() {
         ? `${request.job.customer || "Untitled request"}${
             request.job.jobNumber ? ` · ${request.job.jobNumber}` : ""
           } · ${STATUS_LABELS[request.status]}`
-        : "Loading request…"
+        : openError
+          ? "Unavailable"
+          : "Loading request…"
       : undefined;
 
   return (
@@ -1252,9 +1259,7 @@ export default function App() {
             <div className="shell-legacy-bar">
               <button
                 className="button primary"
-                onClick={() =>
-                  goTo({ kind: "legacy", startNew: true })
-                }
+                onClick={() => goTo({ kind: "legacy", startNew: true })}
               >
                 <Plus size={17} />
                 New change order
@@ -1291,9 +1296,7 @@ export default function App() {
                     </span>
                     <button
                       className="button small"
-                      onClick={() =>
-                        goTo({ kind: "legacy", startNew: false })
-                      }
+                      onClick={() => goTo({ kind: "legacy", startNew: false })}
                     >
                       Open
                     </button>

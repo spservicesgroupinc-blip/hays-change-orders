@@ -1,11 +1,5 @@
 import { useRef, useState } from "react";
-import {
-  CheckCircle2,
-  FileUp,
-  ListChecks,
-  Upload,
-  X,
-} from "lucide-react";
+import { CheckCircle2, FileUp, ListChecks, Upload, X } from "lucide-react";
 import type { JobEntry } from "../types";
 import { parseJobReport, type JobImportResult } from "../services/jobImport";
 import { importJobs } from "../services/storage";
