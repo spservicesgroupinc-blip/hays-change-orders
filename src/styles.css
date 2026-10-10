@@ -77,17 +77,6 @@ p {
 svg {
   flex-shrink: 0;
 }
-.topbar {
-  min-height: 84px;
-  background: white;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: env(safe-area-inset-top, 0px) 42px 0;
-  position: relative;
-  z-index: 2;
-}
 .brand {
   display: flex;
   align-items: center;
@@ -111,11 +100,6 @@ svg {
   color: #87909b;
   display: block;
   margin-top: 5px;
-}
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 24px;
 }
 .local-label {
   display: flex;
@@ -534,7 +518,7 @@ svg {
   display: flex;
   max-width: 1700px;
   margin: auto;
-  min-height: calc(100dvh - 84px);
+  min-height: calc(100dvh - var(--app-header-height, 84px));
 }
 .rail {
   width: 260px;
@@ -543,9 +527,11 @@ svg {
   border-right: 1px solid var(--border);
   padding: 26px 23px;
   position: sticky;
-  top: 0;
+  /* --app-header-height is published by AppHeader; the header is sticky, so the
+     rail has to stop underneath it instead of sliding behind it. */
+  top: var(--app-header-height, 84px);
   align-self: flex-start;
-  min-height: calc(100dvh - 84px);
+  min-height: calc(100dvh - var(--app-header-height, 84px));
   display: flex;
   flex-direction: column;
 }
@@ -1373,10 +1359,6 @@ svg {
   }
 }
 @media (max-width: 950px) {
-  .topbar {
-    padding: 0 24px;
-    height: 75px;
-  }
   .workspace {
     display: block;
   }
@@ -1390,7 +1372,9 @@ svg {
   }
   .rail-job,
   .rail-total,
-  .back-link {
+  /* Only the rail's own link folds into the step bar; page-level back links
+     keep their own exit. */
+  .rail .back-link {
     display: none;
   }
   .rail nav {
@@ -1454,33 +1438,6 @@ svg {
   }
 }
 @media (max-width: 680px) {
-  .topbar {
-    padding: 8px 18px;
-    height: auto;
-    min-height: 75px;
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-  .brand strong {
-    font-size: 23px;
-  }
-  .brand > svg {
-    width: 40px;
-  }
-  .brand span {
-    font-size: 8px;
-  }
-  .topbar-right {
-    gap: 5px;
-    flex-wrap: wrap;
-    width: 100%;
-    justify-content: flex-end;
-  }
-  .topbar .button {
-    font-size: 11px;
-    padding: 8px 11px;
-    min-height: 36px;
-  }
   .home {
     padding: 33px 20px;
   }

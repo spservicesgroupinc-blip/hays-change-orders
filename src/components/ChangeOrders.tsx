@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Clock3, FileText, Search } from "lucide-react";
+import { ArrowRight, Clock3, FileText, Search } from "lucide-react";
 import type { RequestStatus, RequestSummary } from "../types";
 import DashNoteButton from "./DashNoteButton";
 import "./ChangeOrders.css";
@@ -25,10 +25,9 @@ const FILTERS: { id: RequestStatus | "all"; label: string }[] = [
 interface Props {
   requests: RequestSummary[];
   onOpen: (id: string) => void;
-  onBack: () => void;
 }
 
-export default function ChangeOrders({ requests, onOpen, onBack }: Props) {
+export default function ChangeOrders({ requests, onOpen }: Props) {
   const [filter, setFilter] = useState<RequestStatus | "all">("all");
   const [search, setSearch] = useState("");
 
@@ -50,10 +49,6 @@ export default function ChangeOrders({ requests, onOpen, onBack }: Props) {
   return (
     <div className="orders-page">
       <header className="orders-head">
-        <button className="back-link" onClick={onBack}>
-          <ArrowLeft size={15} />
-          Back to requests
-        </button>
         <div className="orders-title">
           <span className="eyebrow">CHANGE ORDERS</span>
           <h1>Stored change orders</h1>

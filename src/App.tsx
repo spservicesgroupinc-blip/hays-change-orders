@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
-  Archive,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
+import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
@@ -11,7 +17,6 @@ import {
   FolderOpen,
   Hourglass,
   Inbox,
-  ListChecks,
   Plus,
   Search,
   Send,
@@ -49,6 +54,19 @@ import {
   listRecoveries,
   persistRecovery,
 } from "./services/requestEditor";
+import {
+  HOME,
+  destinationToView,
+  hashToView,
+  initialView,
+  persistView,
+  sameView,
+  viewToHash,
+  writeHistory,
+  type NavDestination,
+  type View,
+} from "./services/navigation";
+import AppHeader from "./components/AppHeader";
 import PMRequestForm, { IntakeReceipt } from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import ChangeOrders from "./components/ChangeOrders";
@@ -112,43 +130,6 @@ const STAT_TILES: {
     icon: <CheckCircle2 size={16} />,
   },
 ];
-type View =
-  | { kind: "home" }
-  | { kind: "request"; id: string }
-  | { kind: "legacy"; startNew: boolean }
-  | { kind: "jobs" }
-  | { kind: "orders" };
-const VIEW_KEY = "hays-active-view";
-function restoreView(): View {
-  try {
-    const raw = localStorage.getItem(VIEW_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as View;
-      if (parsed.kind === "legacy") return { kind: "legacy", startNew: false };
-      if (parsed.kind === "orders") return { kind: "orders" };
-      if (parsed.kind === "jobs") return { kind: "jobs" };
-      if (parsed.kind === "request" && parsed.id)
-        return { kind: "request", id: parsed.id };
-    }
-  } catch {}
-  return { kind: "home" };
-}
-
-function Brand() {
-  return (
-    <div className="brand">
-      <svg viewBox="0 0 65 42" aria-hidden="true">
-        <rect width="14" height="42" fill="#dc2626" />
-        <rect x="36" width="14" height="42" fill="#1a1a1a" />
-        <rect x="14" y="14" width="51" height="14" fill="#1a1a1a" />
-      </svg>
-      <div>
-        <strong>Hays+Sons</strong>
-        <span>CHANGE ORDERS</span>
-      </div>
-    </div>
-  );
-}
 
 function SubmittedReview({
   request,
@@ -227,6 +208,16 @@ function AttachmentPreview({
     setUrl(next);
     return () => URL.revokeObjectURL(next);
   }, [preview]);
+  // Escape is the desktop twin of the phone's back gesture, which the shell
+  // already routes to onClose.
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview, onClose]);
   if (!preview) return null;
   return (
     <div
@@ -262,7 +253,7 @@ function AttachmentPreview({
 }
 
 export default function App() {
-  const [view, setViewState] = useState<View>(restoreView);
+  const [view, setViewState] = useState<View>(initialView);
   const [requests, setRequests] = useState<RequestSummary[]>([]);
   const [legacyDrafts, setLegacyDrafts] = useState<DraftSummary[]>([]);
   const [jobs, setJobs] = useState<JobEntry[]>([]);
@@ -302,20 +293,33 @@ export default function App() {
   const pendingFiles = useRef(
     new Map<string, { file: File; kind: AttachmentKind; quoteId?: string }>(),
   );
+  const mainRef = useRef<HTMLElement>(null);
+  // A preview is pushed onto the history stack so the phone's back gesture
+  // closes it. The two flags keep that bookkeeping off the routing path.
+  const previewEntry = useRef(false);
+  const suppressPop = useRef(false);
+
   const viewRef = useRef(view);
   viewRef.current = view;
-  function setView(next: View) {
-    viewRef.current = next;
-    setViewState(next);
-    try {
-      localStorage.setItem(
-        VIEW_KEY,
-        JSON.stringify({ ...next, startNew: false }),
-      );
-    } catch {}
-  }
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
 
-  const refresh = async () => {
+  /**
+   * The single way a view changes: React state, the URL and the stored view
+   * move together, so the back gesture, a shared link and a cold start all
+   * agree on where the user is.
+   */
+  const navigateTo = useCallback(
+    (next: View, mode: "push" | "replace" = "push") => {
+      viewRef.current = next;
+      setViewState(next);
+      persistView(next);
+      writeHistory(next, mode);
+    },
+    [],
+  );
+
+  const refresh = useCallback(async () => {
     try {
       const data = await loadDashboard();
       setRequests(data.requests);
@@ -325,10 +329,71 @@ export default function App() {
     } catch (error) {
       setListError(error instanceof Error ? error.message : String(error));
     }
-  };
+  }, []);
+
+  const flush = useCallback(async () => {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    await editorRef.current?.flush();
+  }, []);
+
+  /** Drop everything that belonged to the request editor being left behind. */
+  const closeEditor = useCallback(() => {
+    setRequest(null);
+    editorRef.current = null;
+    setPendingUploads([]);
+    pendingFiles.current.clear();
+    setOpenError("");
+  }, []);
+
+  /**
+   * Leave whatever is on screen for another view. The editor is flushed in the
+   * background so a fast tap on Back never waits on the network, but nothing
+   * typed is lost either.
+   */
+  const goTo = useCallback(
+    (next: View, mode: "push" | "replace" = "push") => {
+      void flush();
+      navigateTo(next, mode);
+      if (next.kind !== "request") {
+        closeEditor();
+        setPreview(null);
+        previewEntry.current = false;
+      }
+      if (next.kind === "home") void refresh();
+    },
+    [closeEditor, flush, navigateTo, refresh],
+  );
+
+  const navigate = useCallback(
+    (destination: NavDestination) => goTo(destinationToView(destination)),
+    [goTo],
+  );
+
+  const goHome = useCallback(() => goTo(HOME), [goTo]);
+
+  const closePreview = useCallback(() => {
+    if (!previewRef.current) return;
+    setPreview(null);
+    if (!previewEntry.current) return;
+    // Remove the entry the preview pushed so one back gesture leaves the
+    // request rather than closing a dialog that is already gone.
+    previewEntry.current = false;
+    suppressPop.current = true;
+    window.history.back();
+  }, []);
+
   useEffect(() => {
-    void refresh().finally(() => setReady(true));
+    // The current entry becomes the dashboard, so backing out of a restored
+    // deep link lands on the request list instead of leaving the app.
     const initial = viewRef.current;
+    window.history.replaceState(null, "", viewToHash(HOME));
+    if (!sameView(initial, HOME))
+      window.history.pushState(null, "", viewToHash(initial));
+
+    void refresh().finally(() => setReady(true));
     if (initial.kind === "request") void openRequestById(initial.id);
     const onHide = () => {
       if (document.visibilityState === "hidden") void flush();
@@ -337,6 +402,42 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onHide);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      if (suppressPop.current) {
+        suppressPop.current = false;
+        return;
+      }
+      // An open preview owns the entry it pushed: back closes the file first.
+      if (previewRef.current) {
+        previewEntry.current = false;
+        setPreview(null);
+        return;
+      }
+      const next = hashToView(window.location.hash) ?? HOME;
+      if (sameView(next, viewRef.current)) return;
+      if (next.kind === "request") {
+        void flush();
+        setRequest(null);
+        navigateTo(next, "replace");
+        setOpenError("");
+        void openRequestById(next.id);
+        return;
+      }
+      goTo(next, "replace");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [flush, goTo, navigateTo]);
+
+  // A view change is a page change: start at the top and let a screen reader
+  // follow the new content instead of silently staying on the old heading.
+  const viewKey = view.kind === "request" ? `request:${view.id}` : view.kind;
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+    mainRef.current?.focus({ preventScroll: true });
+  }, [viewKey]);
 
   // Never leave someone staring at a spinner: offer a retry if boot stalls.
   useEffect(() => {
@@ -387,7 +488,8 @@ export default function App() {
     setSaveError("");
     setBusy("");
     setClaimName("");
-    setView({ kind: "request", id: data.id });
+    setOpenError("");
+    navigateTo({ kind: "request", id: data.id });
     // Every editor open funnels through here — a request loaded from the queue
     // (openRequestById, including the request restored on boot) and a converted
     // legacy draft both pick up the directory's original contract amount here.
@@ -413,13 +515,6 @@ export default function App() {
   }
   function newRequest() {
     openEditor(createRequest());
-  }
-  async function flush() {
-    if (flushTimer.current) {
-      clearTimeout(flushTimer.current);
-      flushTimer.current = null;
-    }
-    await editorRef.current?.flush();
   }
   function scheduleFlush() {
     if (flushTimer.current) clearTimeout(flushTimer.current);
@@ -454,17 +549,6 @@ export default function App() {
     if (next === editor.current) return;
     patch(() => next);
   }
-
-  const goHome = async () => {
-    await flush();
-    setView({ kind: "home" });
-    setRequest(null);
-    editorRef.current = null;
-    setPendingUploads([]);
-    pendingFiles.current.clear();
-    setPreview(null);
-    void refresh();
-  };
 
   async function submitRequest() {
     const editor = editorRef.current;
@@ -739,6 +823,12 @@ export default function App() {
     try {
       const result = await fetchAttachment(editor.current.id, attachment.id);
       setPreview({ name: result.name, blob: result.blob });
+      // One extra history entry: the back gesture closes the file preview
+      // before it leaves the request.
+      if (!previewEntry.current) {
+        previewEntry.current = true;
+        window.history.pushState(null, "", window.location.hash);
+      }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -787,7 +877,17 @@ export default function App() {
   if (!ready)
     return (
       <div className="boot">
-        <Brand />
+        <div className="brand">
+          <svg viewBox="0 0 65 42" aria-hidden="true">
+            <rect width="14" height="42" fill="#dc2626" />
+            <rect x="36" width="14" height="42" fill="#1a1a1a" />
+            <rect x="14" y="14" width="51" height="14" fill="#1a1a1a" />
+          </svg>
+          <div>
+            <strong>Hays+Sons</strong>
+            <span>CHANGE ORDERS</span>
+          </div>
+        </div>
         {bootSlow ? (
           <>
             <p>
@@ -817,18 +917,8 @@ export default function App() {
       </div>
     );
 
-  if (view.kind === "orders")
-    return (
-      <>
-        <InstallApp />
-        <ChangeOrders
-          requests={requests}
-          onOpen={(id) => void openRequestById(id)}
-          onBack={() => void goHome()}
-        />
-      </>
-    );
-
+  // The legacy workspace owns its own header because it owns the draft state
+  // behind the extra "My drafts" control.
   if (view.kind === "legacy")
     return (
       <>
@@ -836,65 +926,39 @@ export default function App() {
         <LegacyWorkspace
           startNew={view.startNew}
           converting={Boolean(converting)}
-          onExit={() => void goHome()}
+          onNavigate={navigate}
           onConvert={convert}
         />
       </>
     );
 
-  if (view.kind === "jobs")
-    return (
-      <>
-        <InstallApp />
-        <AdminJobs
-          jobs={jobs}
-          onBack={() => void goHome()}
-          onImported={setJobs}
-        />
-      </>
-    );
+  const back =
+    view.kind === "home"
+      ? undefined
+      : view.kind === "request"
+        ? { label: "All requests", onClick: goHome }
+        : { label: "Back to requests", onClick: goHome };
+  const subtitle =
+    view.kind === "request"
+      ? request
+        ? `${request.job.customer || "Untitled request"}${
+            request.job.jobNumber ? ` · ${request.job.jobNumber}` : ""
+          } · ${STATUS_LABELS[request.status]}`
+        : "Loading request…"
+      : undefined;
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Brand />
-        <div className="topbar-right">
-          <span className="local-label">
-            <ShieldCheck size={15} />
-            Shared with your team
-          </span>
-          <button
-            className="button small"
-            onClick={() => setView({ kind: "orders" })}
-          >
-            <Archive size={16} />
-            Change orders
-          </button>
-          <button
-            className="button small"
-            onClick={() => setView({ kind: "jobs" })}
-          >
-            <ListChecks size={16} />
-            Jobs
-          </button>
-          {view.kind === "request" ? (
-            <button className="button small" onClick={() => void goHome()}>
-              <FolderOpen size={16} />
-              All requests
-            </button>
-          ) : (
-            <button
-              className="button small"
-              onClick={() => setView({ kind: "legacy", startNew: false })}
-            >
-              <FolderOpen size={16} />
-              Legacy editor
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        current={view.kind}
+        onNavigate={navigate}
+        back={back}
+        subtitle={subtitle}
+        hideHomeNav={view.kind === "request"}
+        busy={busy}
+      />
       <InstallApp />
-      {listError && view.kind === "home" ? (
+      {listError ? (
         <div className="storage-error" role="alert">
           <X size={18} />
           <span>
@@ -905,8 +969,19 @@ export default function App() {
           </button>
         </div>
       ) : null}
-      {view.kind === "request" ? (
-        <main className="shell-request">
+      {view.kind === "orders" ? (
+        <main className="shell-page" ref={mainRef} tabIndex={-1}>
+          <ChangeOrders
+            requests={requests}
+            onOpen={(id) => void openRequestById(id)}
+          />
+        </main>
+      ) : view.kind === "jobs" ? (
+        <main className="shell-page" ref={mainRef} tabIndex={-1}>
+          <AdminJobs jobs={jobs} onImported={setJobs} />
+        </main>
+      ) : view.kind === "request" ? (
+        <main className="shell-request" ref={mainRef} tabIndex={-1}>
           {saveError ? (
             <div className="storage-error" role="alert">
               <X size={18} />
@@ -931,7 +1006,7 @@ export default function App() {
                 claimName={claimName}
                 onClaimName={setClaimName}
                 onClaim={() => void claim()}
-                onBack={() => void goHome()}
+                onBack={goHome}
                 onPreview={(attachment) => void previewAttachment(attachment)}
                 busy={busy === "Claiming…"}
               />
@@ -981,7 +1056,7 @@ export default function App() {
                 >
                   Try again
                 </button>
-                <button className="button" onClick={() => void goHome()}>
+                <button className="button" onClick={goHome}>
                   Back to requests
                 </button>
               </div>
@@ -994,7 +1069,7 @@ export default function App() {
           )}
         </main>
       ) : (
-        <main className="home shell-home">
+        <main className="home shell-home" ref={mainRef} tabIndex={-1}>
           <header className="ops-head">
             <div className="ops-head-text">
               <span className="eyebrow">Operations dashboard</span>
@@ -1177,14 +1252,16 @@ export default function App() {
             <div className="shell-legacy-bar">
               <button
                 className="button primary"
-                onClick={() => setView({ kind: "legacy", startNew: true })}
+                onClick={() =>
+                  goTo({ kind: "legacy", startNew: true })
+                }
               >
                 <Plus size={17} />
                 New change order
               </button>
               <button
                 className="button"
-                onClick={() => setView({ kind: "legacy", startNew: false })}
+                onClick={() => goTo({ kind: "legacy", startNew: false })}
               >
                 <FolderOpen size={16} />
                 Open legacy drafts
@@ -1215,7 +1292,7 @@ export default function App() {
                     <button
                       className="button small"
                       onClick={() =>
-                        setView({ kind: "legacy", startNew: false })
+                        goTo({ kind: "legacy", startNew: false })
                       }
                     >
                       Open
@@ -1241,7 +1318,7 @@ export default function App() {
           </footer>
         </main>
       )}
-      <AttachmentPreview preview={preview} onClose={() => setPreview(null)} />
+      <AttachmentPreview preview={preview} onClose={closePreview} />
     </div>
   );
 }

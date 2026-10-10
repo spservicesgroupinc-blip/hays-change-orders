@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import {
-  ArrowLeft,
   CheckCircle2,
   FileUp,
   ListChecks,
@@ -14,15 +13,10 @@ import "./AdminJobs.css";
 
 export interface AdminJobsProps {
   jobs: JobEntry[];
-  onBack: () => void;
   onImported: (jobs: JobEntry[]) => void;
 }
 
-export default function AdminJobs({
-  jobs,
-  onBack,
-  onImported,
-}: AdminJobsProps) {
+export default function AdminJobs({ jobs, onImported }: AdminJobsProps) {
   const [raw, setRaw] = useState("");
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<JobImportResult | null>(null);
@@ -84,10 +78,6 @@ export default function AdminJobs({
 
   return (
     <div className="shell-request admin-jobs">
-      <button className="back-link" onClick={onBack}>
-        <ArrowLeft size={15} />
-        Back to requests
-      </button>
       <div className="admin-jobs-head">
         <div>
           <span className="pm-eyebrow">ADMIN / JOB DIRECTORY</span>

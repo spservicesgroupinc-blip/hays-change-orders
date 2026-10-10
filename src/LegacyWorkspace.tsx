@@ -49,6 +49,8 @@ import {
   validDecimal,
   validationErrors,
 } from "./services/pricing";
+import AppHeader from "./components/AppHeader";
+import type { NavDestination } from "./services/navigation";
 const PdfViewer = lazy(() => import("./components/PdfViewer"));
 const Preview = lazy(() => import("./components/Preview"));
 const STEPS = [
@@ -169,13 +171,14 @@ function SourcePanel({ source, page }: { source: SourceFile; page: number }) {
   );
 }
 export interface LegacyWorkspaceProps {
-  onExit: () => void;
+  /** Section navigation, provided by the shell so every screen agrees on it. */
+  onNavigate: (destination: NavDestination) => void;
   onConvert: (id: string) => Promise<void>;
   startNew?: boolean;
   converting?: boolean;
 }
 export default function LegacyWorkspace({
-  onExit,
+  onNavigate,
   onConvert,
   startNew = false,
   converting = false,
@@ -275,6 +278,15 @@ export default function LegacyWorkspace({
     return () => clearTimeout(timer);
   }, [draft, ready]);
   useEffect(() => {
+    // Navigating away (the header's back button, a menu jump) unmounts this
+    // workspace, so the last keystrokes still inside the autosave debounce are
+    // written on the way out instead of being lost.
+    return () => {
+      if (draftRef.current && dirty.current)
+        void persist(draftRef.current).catch(() => {});
+    };
+  }, []);
+  useEffect(() => {
     const hide = () => {
       if (
         document.visibilityState === "hidden" &&
@@ -315,6 +327,8 @@ export default function LegacyWorkspace({
   const go = (step: number) => {
     setError("");
     update((d) => ({ ...d, step }));
+    // A step is a page: landing halfway down the next one reads as a dead end.
+    window.scrollTo({ top: 0, left: 0 });
   };
   const backHome = async () => {
     let current = draftRef.current;
@@ -557,18 +571,16 @@ export default function LegacyWorkspace({
     );
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Brand />
-        <div className="topbar-right">
-          <span className="local-label">
-            <ShieldCheck size={15} />
-            Legacy change orders
-          </span>
-          <button className="button small" onClick={onExit}>
-            <ArrowLeft size={16} />
-            Requests
-          </button>
-          {draft ? (
+      <AppHeader
+        current="legacy"
+        onNavigate={onNavigate}
+        context="Legacy change orders"
+        back={{
+          label: "Back to requests",
+          onClick: () => onNavigate("home"),
+        }}
+        actions={
+          draft ? (
             <button
               className="button small"
               disabled={!!busy}
@@ -577,9 +589,9 @@ export default function LegacyWorkspace({
               <FolderOpen size={16} />
               My drafts
             </button>
-          ) : null}
-        </div>
-      </header>
+          ) : null
+        }
+      />
       {storageError ? (
         <div className="storage-error" role="alert">
           <CircleAlert size={18} />

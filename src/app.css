@@ -1,6 +1,21 @@
 .shell-home {
   max-width: 1000px;
 }
+/* Wrapper for the full-width section pages (change orders, jobs). */
+.shell-page {
+  display: block;
+  padding-bottom: 40px;
+}
+/* The shell focuses the page container on every navigation so the change is
+   announced; the ring belongs on controls, not on the page itself. */
+.shell-page:focus,
+.shell-page:focus-visible,
+.shell-request:focus,
+.shell-request:focus-visible,
+.shell-home:focus,
+.shell-home:focus-visible {
+  outline: none;
+}
 .shell-request {
   max-width: 1500px;
   margin: 0 auto;
