@@ -53,6 +53,7 @@ import {
 import PMRequestForm, { IntakeReceipt } from "./components/PMRequestForm";
 import EstimatorWorkspace from "./components/EstimatorWorkspace";
 import ChangeOrders from "./components/ChangeOrders";
+import DashNoteButton from "./components/DashNoteButton";
 import AdminJobs from "./components/AdminJobs";
 import LegacyWorkspace from "./LegacyWorkspace";
 import PdfViewer from "./components/PdfViewer";
@@ -846,6 +847,11 @@ export default function App() {
               <button className="button small" onClick={() => void flush()}>
                 Retry
               </button>
+            </div>
+          ) : null}
+          {request ? (
+            <div className="request-note-bar">
+              <DashNoteButton request={request} />
             </div>
           ) : null}
           {request ? (

@@ -78,13 +78,11 @@
 .order-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  text-align: left;
+  gap: 12px;
   background: #fff;
   border: 1px solid #e3e7ec;
   border-radius: 12px;
   padding: 18px;
-  cursor: pointer;
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -92,8 +90,33 @@
 }
 .order-card:hover {
   border-color: #c3c9d2;
+}
+.order-card:has(.order-card-body:hover) {
+  border-color: #c3c9d2;
   box-shadow: 0 6px 18px #0f1a2a12;
   transform: translateY(-1px);
+}
+.order-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.order-card-body:focus-visible {
+  outline: 2px solid #dc2626;
+  outline-offset: 4px;
+}
+.order-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #f0f2f5;
+  padding-top: 12px;
 }
 .order-card-top {
   display: flex;

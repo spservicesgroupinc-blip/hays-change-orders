@@ -1,0 +1,13 @@
+.dash-note {
+  display: inline-flex;
+}
+.dash-note-button.is-copied {
+  border-color: #bfdfc9;
+  background: #ecf8ef;
+  color: #1f7a3d;
+}
+.dash-note-button.is-error {
+  border-color: #f1c9c9;
+  background: #fdeeee;
+  color: #b03232;
+}

@@ -10,6 +10,13 @@
   max-width: 1400px;
   margin: 0 auto;
 }
+/* One-click Dash note for the change order currently open. */
+.request-note-bar {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 1080px;
+  margin: 0 auto 12px;
+}
 
 /* Request queue rows */
 .request-list {

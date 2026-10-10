@@ -685,6 +685,78 @@ test("a request sent back for information links the PM straight into the change 
   expect(runtimeErrors).toEqual([]);
 });
 
+test("one click copies a Dash note from the open request and the orders list", async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await page
+    .context()
+    .grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New request", exact: true }).click();
+  await page.getByLabel("Job number", { exact: true }).fill("FW-DASH-001");
+  await page
+    .getByLabel("Customer / project owner", { exact: true })
+    .fill("Dash Customer");
+  await page
+    .getByLabel("Property address", { exact: true })
+    .fill("12 Bathroom Way, Fort Wayne, IN");
+  await page.getByLabel("Project manager", { exact: true }).fill("Dash PM");
+  await page
+    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .click();
+  await page.getByLabel("Room / work area", { exact: true }).fill("Bathroom");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .fill("Install two exhaust fans (bathroom fans)");
+  await page
+    .getByRole("button", { name: "Add another work area / change", exact: true })
+    .click();
+  await page
+    .getByLabel("Room / work area", { exact: true })
+    .nth(1)
+    .fill("Hallway");
+  await page
+    .getByRole("textbox", { name: "What needs to change?" })
+    .nth(1)
+    .fill("Repaint the hallway walls");
+  // The open request copies a summary without leaving the page.
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Copied to clipboard", exact: true }),
+  ).toBeVisible();
+  const openNote = await page.evaluate(() => navigator.clipboard.readText());
+  expect(openNote).toContain(
+    "Change order requested — Dash Customer (FW-DASH-001)",
+  );
+  expect(openNote).toContain("PM: Dash PM");
+  expect(openNote).toContain(
+    "- Bathroom — add: Install two exhaust fans (bathroom fans)",
+  );
+  expect(openNote).toContain("- Hallway — add: Repaint the hallway walls");
+  expect(openNote).toContain("2 changes · Created");
+  expect(openNote).toContain("Estimator: unassigned");
+  // Every card on the Change orders page copies on its own.
+  await page.getByRole("button", { name: "Change orders", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Copied to clipboard", exact: true }),
+  ).toBeVisible();
+  const listedNote = await page.evaluate(() => navigator.clipboard.readText());
+  expect(listedNote).toContain(
+    "Change order requested — Dash Customer (FW-DASH-001)",
+  );
+  expect(listedNote).toContain(
+    "- Bathroom — add: Install two exhaust fans (bathroom fans)",
+  );
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("an admin imports jobs, then the PM picker autofills the job details", async ({
   page,
 }) => {

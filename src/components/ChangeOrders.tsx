@@ -7,6 +7,7 @@ import {
   Search,
 } from "lucide-react";
 import type { RequestStatus, RequestSummary } from "../types";
+import DashNoteButton from "./DashNoteButton";
 import "./ChangeOrders.css";
 
 const STATUS_LABELS: Record<RequestStatus, string> = {
@@ -111,47 +112,51 @@ export default function ChangeOrders({ requests, onOpen, onBack }: Props) {
       ) : (
         <div className="orders-grid">
           {filtered.map((item) => (
-            <button
-              className="order-card"
-              key={item.id}
-              onClick={() => onOpen(item.id)}
-            >
-              <div className="order-card-top">
-                <span className={`request-status status-${item.status}`}>
-                  {STATUS_LABELS[item.status]}
+            <article className="order-card" key={item.id}>
+              <button
+                className="order-card-body"
+                onClick={() => onOpen(item.id)}
+              >
+                <div className="order-card-top">
+                  <span className={`request-status status-${item.status}`}>
+                    {STATUS_LABELS[item.status]}
+                  </span>
+                  <span className="order-card-date">
+                    <Clock3 size={12} />
+                    {new Date(item.updatedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+                <h3>{item.job.customer || "Untitled request"}</h3>
+                <p className="order-card-job">
+                  {item.job.jobNumber || "Job pending"}
+                  {item.job.orderNumber ? ` · ${item.job.orderNumber}` : ""}
+                </p>
+                <dl className="order-card-meta">
+                  <div>
+                    <dt>Changes</dt>
+                    <dd>{item.changesCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Files</dt>
+                    <dd>{item.attachmentsCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Estimator</dt>
+                    <dd>{item.estimatorName || "Unassigned"}</dd>
+                  </div>
+                </dl>
+                <span className="order-card-open">
+                  Review <ArrowRight size={14} />
                 </span>
-                <span className="order-card-date">
-                  <Clock3 size={12} />
-                  {new Date(item.updatedAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
+              </button>
+              <div className="order-card-actions">
+                <DashNoteButton requestId={item.id} />
               </div>
-              <h3>{item.job.customer || "Untitled request"}</h3>
-              <p className="order-card-job">
-                {item.job.jobNumber || "Job pending"}
-                {item.job.orderNumber ? ` · ${item.job.orderNumber}` : ""}
-              </p>
-              <dl className="order-card-meta">
-                <div>
-                  <dt>Changes</dt>
-                  <dd>{item.changesCount}</dd>
-                </div>
-                <div>
-                  <dt>Files</dt>
-                  <dd>{item.attachmentsCount}</dd>
-                </div>
-                <div>
-                  <dt>Estimator</dt>
-                  <dd>{item.estimatorName || "Unassigned"}</dd>
-                </div>
-              </dl>
-              <span className="order-card-open">
-                Review <ArrowRight size={14} />
-              </span>
-            </button>
+            </article>
           ))}
         </div>
       )}
