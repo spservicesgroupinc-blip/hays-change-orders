@@ -17,6 +17,7 @@ import {
   openRequest,
   saveRequest,
   listRequests,
+  loadDashboard,
   claimRequest,
   transitionRequest,
   uploadAttachment,
@@ -785,5 +786,121 @@ test("frontend request APIs round-trip through actual mocked Code.gs and surface
     );
   } finally {
     restore();
+  }
+});
+
+test("bootstrap returns requests, drafts and jobs in one round-trip", () => {
+  const backend = mockBackend();
+  save(backend, intakeRequest());
+  backend.post({ action: "save", draft: validDraft() });
+  backend.post({
+    action: "importJobs",
+    jobs: [
+      {
+        id: "j1",
+        jobNumber: "F-26-0366-R",
+        customer: "Sample Customer",
+        address: "123 Sample St, Fort Wayne, IN 46808",
+        projectManager: "Sample PM",
+        estimator: "Sample Estimator",
+        status: "Work in Progress",
+        customerPhone: "",
+        customerEmail: "",
+        active: true,
+        updatedAt: "",
+      },
+    ],
+  });
+  const result = backend.get({ action: "bootstrap" });
+  assert.equal(result.ok, true);
+  assert.equal(result.requests.length, 1);
+  assert.equal(result.drafts.length, 1);
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].jobNumber, "F-26-0366-R");
+});
+
+test("loadDashboard loads all three lists and falls back when bootstrap is missing", async () => {
+  const backend = mockBackend();
+  save(backend, intakeRequest());
+  backend.post({ action: "save", draft: validDraft() });
+  const restore = backend.installFetch();
+  try {
+    const data = await loadDashboard();
+    assert.equal(data.requests.length, 1);
+    assert.equal(data.drafts.length, 1);
+    assert.deepEqual(data.jobs, []);
+  } finally {
+    restore();
+  }
+  // Simulate a pre-bootstrap deployment, then verify the fallback path still
+  // returns requests and drafts without the combined endpoint.
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://test.local");
+    const action = String(url.searchParams.get("action") ?? "");
+    calls.push(action);
+    const reply = (obj: unknown) =>
+      new Response(JSON.stringify(obj), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    if (action === "bootstrap") return reply({ ok: false, error: "Unknown action." });
+    if (action === "listRequests")
+      return reply({
+        ok: true,
+        requests: [
+          {
+            id: "r1",
+            revision: 1,
+            createdAt: "",
+            updatedAt: "",
+            status: "draft",
+            estimatorName: "",
+            changesCount: 0,
+            attachmentsCount: 0,
+            job: {
+              customer: "Fallback",
+              jobNumber: "",
+              projectManager: "",
+              orderNumber: "",
+              address: "",
+            },
+          },
+        ],
+      });
+    if (action === "list")
+      return reply({
+        ok: true,
+        drafts: [
+          {
+            id: "d1",
+            revision: 1,
+            createdAt: "",
+            updatedAt: "",
+            step: 0,
+            customer: "Fallback",
+            jobNumber: "",
+            orderNumber: "",
+            changesCount: 0,
+            sourceName: "",
+            hasSource: false,
+          },
+        ],
+      });
+    if (action === "listJobs") return reply({ ok: false, error: "Unknown action." });
+    return reply({ ok: false, error: "Unknown action." });
+  }) as typeof fetch;
+  try {
+    const data = await loadDashboard();
+    assert.equal(data.requests[0].job.customer, "Fallback");
+    assert.equal(data.drafts[0].job.customer, "Fallback");
+    assert.deepEqual(data.jobs, []);
+    assert.ok(calls.includes("bootstrap"));
+    assert.ok(calls.includes("listRequests"));
+    assert.ok(calls.includes("list"));
+    assert.ok(calls.includes("listJobs"));
+  } finally {
+    globalThis.fetch = original;
   }
 });

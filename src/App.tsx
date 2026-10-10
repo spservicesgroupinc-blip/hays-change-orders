@@ -38,9 +38,7 @@ import {
   completeRequest as finalizeRequest,
   convertLegacyRequest,
   fetchAttachment,
-  listDrafts,
-  listJobs,
-  listRequests,
+  loadDashboard,
   openRequest,
   transitionRequest,
   uploadAttachment,
@@ -268,7 +266,9 @@ export default function App() {
   const [legacyDrafts, setLegacyDrafts] = useState<DraftSummary[]>([]);
   const [jobs, setJobs] = useState<JobEntry[]>([]);
   const [ready, setReady] = useState(false);
+  const [bootSlow, setBootSlow] = useState(false);
   const [listError, setListError] = useState("");
+  const [openError, setOpenError] = useState("");
   const [homeSearch, setHomeSearch] = useState("");
   const [homeStatus, setHomeStatus] = useState<StatKey>("all");
   const [legacySearch, setLegacySearch] = useState("");
@@ -311,27 +311,17 @@ export default function App() {
 
   const refresh = async () => {
     try {
-      const [requestRows, legacyRows] = await Promise.all([
-        listRequests(),
-        listDrafts(),
-      ]);
-      setRequests(requestRows);
-      setLegacyDrafts(legacyRows);
+      const data = await loadDashboard();
+      setRequests(data.requests);
+      setLegacyDrafts(data.drafts);
+      setJobs(data.jobs);
       setListError("");
     } catch (error) {
       setListError(error instanceof Error ? error.message : String(error));
     }
   };
-  const refreshJobs = async () => {
-    try {
-      setJobs(await listJobs());
-    } catch {
-      // The job directory is optional; requests still work without it.
-    }
-  };
   useEffect(() => {
     void refresh().finally(() => setReady(true));
-    void refreshJobs();
     const initial = viewRef.current;
     if (initial.kind === "request") void openRequestById(initial.id);
     const onHide = () => {
@@ -341,6 +331,13 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onHide);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Never leave someone staring at a spinner: offer a retry if boot stalls.
+  useEffect(() => {
+    if (ready) return;
+    const timer = window.setTimeout(() => setBootSlow(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, [ready]);
 
   function attachEditor(editor: RequestEditor) {
     editorRef.current = editor;
@@ -367,6 +364,7 @@ export default function App() {
   }
   async function openRequestById(id: string) {
     setBusy("Opening request…");
+    setOpenError("");
     try {
       const [data, recoveries] = await Promise.all([
         openRequest(id),
@@ -375,7 +373,9 @@ export default function App() {
       const recovered = recoveries.find((record) => record.request.id === id);
       openEditor(data, recovered);
     } catch (error) {
-      setListError(error instanceof Error ? error.message : String(error));
+      // Shown inside the request view: a failed load must never leave the
+      // screen on an endless spinner with no way back to the list.
+      setOpenError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy("");
     }
@@ -742,8 +742,32 @@ export default function App() {
     return (
       <div className="boot">
         <Brand />
-        <div className="spinner" />
-        <p>Opening your change orders…</p>
+        {bootSlow ? (
+          <>
+            <p>
+              The connection to the shared sheet is taking longer than usual.
+            </p>
+            <div className="button-row">
+              <button
+                className="button primary"
+                onClick={() => void refresh().finally(() => setReady(true))}
+              >
+                Try again
+              </button>
+              <button
+                className="button"
+                onClick={() => window.location.reload()}
+              >
+                Reload
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="spinner" />
+            <p>Opening your change orders…</p>
+          </>
+        )}
       </div>
     );
 
@@ -897,6 +921,25 @@ export default function App() {
                 busy={Boolean(busy)}
               />
             )
+          ) : openError ? (
+            <div className="empty">
+              <div className="empty-icon">
+                <TriangleAlert size={28} />
+              </div>
+              <h3>This change order could not be opened.</h3>
+              <p>{openError}</p>
+              <div className="button-row">
+                <button
+                  className="button primary"
+                  onClick={() => void openRequestById(view.id)}
+                >
+                  Try again
+                </button>
+                <button className="button" onClick={() => void goHome()}>
+                  Back to requests
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="empty">
               <div className="spinner" />

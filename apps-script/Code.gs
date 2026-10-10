@@ -183,6 +183,7 @@ function draftToRow_(draft) {
 
 function doGet(e) {
   const p = (e && e.parameter) || {};
+  if (p.action === "bootstrap") return guarded_(function () { return bootstrap_(); });
   if (p.action === "listRequests") return guarded_(function () { return listRequests_(); });
   if (p.action === "openRequest") return guarded_(function () { return openRequest_(p.id); });
   if (p.action === "listJobs") return guarded_(function () { return listJobs_(); });
@@ -214,19 +215,21 @@ function doPost(e) {
   return fail_("Unknown action.");
 }
 
-function list_() {
+function draftRows_() {
   const sheet = sheet_();
   const last = sheet.getLastRow();
   const values =
     last >= 2
       ? sheet.getRange(2, 1, last - 1, COLUMN_COUNT).getValues()
       : [];
-  const rows = values
+  return values
     .map(rowToSummary_)
     .sort(function (a, b) {
       return b.updatedAt.localeCompare(a.updatedAt);
     });
-  return json_({ ok: true, drafts: rows });
+}
+function list_() {
+  return json_({ ok: true, drafts: draftRows_() });
 }
 
 function open_(id) {
@@ -329,10 +332,13 @@ function jobsSheet_() {
 function jobRow_(v) {
   return { id: String(v[0]), jobNumber: String(v[1] || ""), customer: String(v[2] || ""), address: String(v[3] || ""), projectManager: String(v[4] || ""), estimator: String(v[5] || ""), status: String(v[6] || ""), customerPhone: String(v[7] || ""), customerEmail: String(v[8] || ""), active: v[9] === true || String(v[9]).toLowerCase() === "true", updatedAt: String(v[10] || "") };
 }
-function listJobs_() {
+function jobRows_() {
   const sheet = jobsSheet_(); const last = sheet.getLastRow();
   const rows = last < 2 ? [] : sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).getValues();
-  return json_({ ok: true, jobs: rows.map(jobRow_) });
+  return rows.map(jobRow_);
+}
+function listJobs_() {
+  return json_({ ok: true, jobs: jobRows_() });
 }
 function importJobs_(body) {
   if (!body || !Array.isArray(body.jobs)) problem_("VALIDATION", "A jobs array is required.");
@@ -363,10 +369,18 @@ function readSnapshot_(row) {
 function summary_(v) {
   return { id: String(v[RC.ID]), revision: Number(v[RC.REVISION]), createdAt: String(v[RC.CREATED]), updatedAt: String(v[RC.UPDATED]), status: String(v[RC.STATUS]), estimatorName: String(v[RC.ESTIMATOR] || ""), changesCount: Number(v[RC.CHANGES]), attachmentsCount: Number(v[RC.ATTACHMENTS]), job: { customer: String(v[RC.CUSTOMER] || ""), jobNumber: String(v[RC.JOB] || ""), projectManager: String(v[RC.PM] || ""), orderNumber: String(v[RC.ORDER] || ""), address: String(v[RC.ADDRESS] || "") } };
 }
-function listRequests_() {
+function requestRows_() {
   const sheet = requestsSheet_(); const last = sheet.getLastRow();
   const rows = last < 2 ? [] : sheet.getRange(2, 1, last - 1, REQUEST_HEADERS.length).getValues();
-  return json_({ ok: true, requests: rows.map(summary_).sort(function(a, b) { return b.updatedAt.localeCompare(a.updatedAt); }) });
+  return rows.map(summary_).sort(function(a, b) { return b.updatedAt.localeCompare(a.updatedAt); });
+}
+function listRequests_() {
+  return json_({ ok: true, requests: requestRows_() });
+}
+function bootstrap_() {
+  // One round-trip loads everything the dashboard and job picker need, instead
+  // of three separate Apps Script executions (each with a cold-start delay).
+  return json_({ ok: true, requests: requestRows_(), drafts: draftRows_(), jobs: jobRows_() });
 }
 function openRequest_(id) {
   const row = requestRow_(id); if (!row) problem_("NOT_FOUND", "Request not found.");

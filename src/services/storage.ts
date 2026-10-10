@@ -68,20 +68,45 @@ function query(params: Record<string, string | undefined>): string {
     )
     .join("&");
 }
+async function requestJson(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return await response.json();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("The sync service did not respond in time. Try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function get<T>(params: Record<string, string | undefined>): Promise<T> {
   const separator = API_URL.includes("?") ? "&" : "?";
-  const response = await fetch(`${API_URL}${separator}${query(params)}`);
-  const payload = await response.json();
+  const payload = await requestJson(
+    `${API_URL}${separator}${query(params)}`,
+    {},
+    20000,
+  );
   if (!payload || payload.ok === false) apiFailure(payload);
   return payload as T;
 }
 async function post<T>(body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json();
+  const payload = await requestJson(
+    API_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+    },
+    60000,
+  );
   if (!payload || payload.ok === false) apiFailure(payload);
   return payload as T;
 }
@@ -328,4 +353,39 @@ export async function listJobs(): Promise<JobEntry[]> {
 export async function importJobs(jobs: JobEntry[]): Promise<JobEntry[]> {
   const data = await post<{ jobs: JobEntry[] }>({ action: "importJobs", jobs });
   return data.jobs;
+}
+
+export interface DashboardData {
+  requests: RequestSummary[];
+  drafts: DraftSummary[];
+  jobs: JobEntry[];
+}
+// Loads everything the home dashboard and job picker need in a single Apps
+// Script round-trip (one cold start instead of three). Older deployments that
+// predate the combined endpoint fall back to the individual list calls.
+export async function loadDashboard(): Promise<DashboardData> {
+  try {
+    const data = await get<{
+      requests: RequestSummary[];
+      drafts: ServerSummary[];
+      jobs: JobEntry[];
+    }>({ action: "bootstrap" });
+    return {
+      requests: data.requests ?? [],
+      drafts: (data.drafts ?? []).map(toSummary),
+      jobs: data.jobs ?? [],
+    };
+  } catch (error) {
+    const [requests, drafts] = await Promise.all([
+      listRequests(),
+      listDrafts(),
+    ]);
+    let jobs: JobEntry[] = [];
+    try {
+      jobs = await listJobs();
+    } catch {
+      // The job directory is optional; the dashboard still loads without it.
+    }
+    return { requests, drafts, jobs };
+  }
 }

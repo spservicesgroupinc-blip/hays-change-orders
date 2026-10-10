@@ -40,9 +40,24 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/__/, /^\/api\//],
+        // Only hashed assets are precached. The document is handled by the
+        // network-first route below so a shell cached by an older deployment can
+        // never ask for files the newest deployment has already pruned.
+        globPatterns: ["**/*.{js,css,svg,png,ico,woff2}"],
+        cleanupOutdatedCaches: true,
+        navigateFallback: null,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === "navigate" &&
+              url.origin === self.location.origin,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "hays-app-shell",
+              networkTimeoutSeconds: 4,
+            },
+          },
+        ],
       },
     }),
   ],

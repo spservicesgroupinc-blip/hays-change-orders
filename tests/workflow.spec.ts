@@ -71,6 +71,31 @@ async function installMockApi(page: Page) {
         contentType: "application/json",
         body: JSON.stringify(obj),
       });
+    if (action === "bootstrap") {
+      const rows = [...drafts.values()]
+        .map((d) => ({
+          id: d.id,
+          revision: d.revision,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+          step: d.step,
+          customer: d.job.customer,
+          jobNumber: d.job.jobNumber,
+          orderNumber: d.job.orderNumber,
+          changesCount: d.changes.length,
+          sourceName: d.source?.name ?? "",
+          hasSource: Boolean(d.source?.driveFileId),
+        }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      return respond({
+        ok: true,
+        requests: [...requests.values()]
+          .map(summarize)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+        drafts: rows,
+        jobs: [...jobs.values()],
+      });
+    }
     if (action === "list") {
       const rows = [...drafts.values()]
         .map((d) => ({
@@ -843,4 +868,32 @@ test("an admin imports jobs, then the PM picker autofills the job details", asyn
     "Lance Stanley",
   );
   expect(runtimeErrors).toEqual([]);
+});
+
+test("a change order that fails to open offers a way back instead of spinning forever", async ({
+  page,
+}) => {
+  // The app reopens the last change order it was showing on start-up.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "hays-active-view",
+      JSON.stringify({ kind: "request", id: "missing-request" }),
+    );
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", {
+      name: "This change order could not be opened.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Request not found.")).toBeVisible();
+  // The failure must not be hidden behind the loading spinner or boot screen.
+  await expect(page.locator(".spinner")).toHaveCount(0);
+  await expect(page.locator(".boot")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Back to requests", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Change orders", exact: true }),
+  ).toBeVisible();
 });
