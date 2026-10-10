@@ -42,7 +42,10 @@ export function viewToHash(view: View): string {
     case "jobs":
       return "#/jobs";
     case "legacy":
-      return view.startNew ? "#/legacy/new" : "#/legacy";
+      // Starting a new draft is deliberately not encoded in the URL: reopening
+      // or reloading the editor restores the draft in progress instead of
+      // silently creating an empty one.
+      return "#/legacy";
     default:
       return "#/";
   }
@@ -59,7 +62,7 @@ export function hashToView(hash: string): View | null {
     case "jobs":
       return { kind: "jobs" };
     case "legacy":
-      return { kind: "legacy", startNew: parts[1] === "new" };
+      return { kind: "legacy", startNew: false };
     case "requests":
       return parts[1] ? { kind: "request", id: parts[1] } : null;
     default:

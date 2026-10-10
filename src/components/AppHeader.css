@@ -141,7 +141,7 @@
     min-height: 46px;
     font-size: 13px;
   }
-  .local-label {
+  .app-header .local-label {
     display: none;
   }
 }
@@ -154,17 +154,20 @@
   .app-header-tools {
     gap: 8px;
   }
-  .brand > svg {
-    width: 38px;
-    height: 26px;
+  .app-header .brand > svg {
+    width: 36px;
+    height: 24px;
   }
-  .brand strong {
-    font-size: 20px;
+  .app-header .brand strong {
+    font-size: 19px;
   }
-  .brand span {
+  .app-header .brand span {
     font-size: 8px;
     letter-spacing: 2px;
     margin-top: 3px;
+  }
+  .app-header .local-label {
+    display: none;
   }
   .app-header-sub {
     padding: 8px 16px;
