@@ -158,7 +158,7 @@ function AttachmentPreview({
         </div>
         <div className="shell-modal-body">
           {preview.blob.type.startsWith("image/") ? (
-            <img src={url} alt={preview.name} />
+            url ? <img src={url} alt={preview.name} /> : null
           ) : (
             <PdfViewer blob={preview.blob} label={preview.name} />
           )}

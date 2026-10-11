@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { getDocument } from "pdfjs-dist";
+import { resolve } from "node:path";
 
 /**
  * The review page is where an estimator receives a quick request: they read
@@ -94,12 +95,15 @@ function summarize(r: any) {
 async function installMockApi(
   page: Page,
   overrides: Record<string, any> = {},
-  failures: { save?: string; upload?: boolean } = {},
-): Promise<{ requests: Map<string, any>; actions: string[] }> {
+  failures: { save?: string; upload?: boolean; afterSave?: boolean; download?: boolean } = {},
+) {
   const requests = new Map<string, any>();
   const seed = { ...structuredClone(baseRequest), ...overrides };
   requests.set(seed.id, seed);
   const actions: string[] = [];
+  const uploads: Record<string, any>[] = [];
+  const uploaded = new Map<string, any>();
+  const mutations = new Map<string, any>();
   const commit = (next: any) => {
     const previous = requests.get(next.id);
     const updated = {
@@ -145,13 +149,25 @@ async function installMockApi(
       case "openRequest":
         return respond({ ok: true, request: current });
       case "saveRequest": {
+        if (mutations.has(body.mutationId)) return respond({ ok: true, request: mutations.get(body.mutationId) });
         if (failures.save) {
           const code = failures.save;
           delete failures.save;
           return respond({ ok: false, code, error: code === "CONFLICT" ? "A newer revision exists." : "Save failed. Retry." });
         }
         const saved = commit(body.request);
+        mutations.set(body.mutationId, saved);
+        if (failures.afterSave) { delete failures.afterSave; return respond({ ok: false, error: "Save response lost. Retry.", code: "SERVICE_ERROR" }); }
         return respond({ ok: true, request: saved });
+      }
+      case "uploadAttachment": {
+        uploads.push(body);
+        if (failures.upload) { delete failures.upload; return respond({ ok: false, code: "UPLOAD_FAILED", error: "Upload failed. Retry." }); }
+        if (!uploaded.has(body.attachmentId)) uploaded.set(body.attachmentId, {
+          id: body.attachmentId, driveFileId: `drive-${body.attachmentId}`, name: body.file.name,
+          mimeType: body.file.mimeType, size: body.file.size, kind: body.file.kind,
+        });
+        return respond({ ok: true, attachment: uploaded.get(body.attachmentId) });
       }
       case "claimRequest":
         return respond({
@@ -181,6 +197,7 @@ async function installMockApi(
         });
       }
       case "fetchAttachment": {
+        if (failures.download) { delete failures.download; return respond({ ok: false, code: "SERVICE_ERROR", error: "File download failed." }); }
         const current = requests.get(url.searchParams.get("requestId") ?? "");
         const attachment = current?.attachments?.find(
           (item: any) => item.id === url.searchParams.get("attachmentId"),
@@ -198,7 +215,7 @@ async function installMockApi(
         return respond({ ok: true });
     }
   });
-  return { requests, actions };
+  return { requests, actions, uploads, uploaded };
 }
 
 test("an estimator reviews, starts work, and marks the request complete", async ({
@@ -347,4 +364,97 @@ test("conflicting edits retain the draft and offer reload without a blind retry"
   await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Conflicting edit");
   await expect(page.getByRole("button", { name: "Reload latest request" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.getByRole("button", { name: "Reload latest request" }).click();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Conflicting edit");
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Reload latest request" }).click();
+  await expect(page.getByText("Wet insulation behind the kitchen wall", { exact: true })).toBeVisible();
+});
+
+test("attachment edits retry on stable identities and preserve the information request", async ({ page }) => {
+  const api = await installMockApi(page, { status: "needs_information", estimatorName: "Jamie Estimator", informationQuestion: "Send a photo." }, { upload: true });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByRole("button", { name: "Remove note.pdf", exact: true }).click();
+  await page.getByLabel("Add photos or PDFs", { exact: true }).setInputFiles([
+    resolve("tmp/fixtures/photo-800x600.png"), resolve("tmp/fixtures/no-text.pdf"),
+  ]);
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Upload failed");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toBeVisible();
+  const saved = api.requests.get("r1");
+  expect(saved.status).toBe("needs_information");
+  expect(saved.estimatorName).toBe("Jamie Estimator");
+  expect(saved.informationQuestion).toBe("Send a photo.");
+  expect(saved.attachments.map((item: any) => item.name)).toEqual(["photo1.jpg", "photo-800x600.png", "no-text.pdf"]);
+  expect(api.uploads[0].attachmentId).toBe(api.uploads[1].attachmentId);
+  expect(api.uploads[0].mutationId).toBe(api.uploads[1].mutationId);
+  expect(api.uploaded.size).toBe(2);
+});
+
+test("a lost save response retries the committed revision instead of duplicating it", async ({ page }) => {
+  const api = await installMockApi(page, {}, { afterSave: true });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByLabel("Description 1", { exact: true }).fill("Commit once");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Save response lost");
+  expect(api.requests.get("r1").revision).toBe(2);
+  await page.getByRole("button", { name: "Retry save", exact: true }).click();
+  await expect(page.getByText("Commit once", { exact: true })).toBeVisible();
+  expect(api.requests.get("r1").revision).toBe(2);
+});
+
+test("legacy requests show unavailable information and validate money before saving", async ({ page }) => {
+  const api = await installMockApi(page, { job: { ...baseRequest.job, customerPhone: undefined, customerEmail: undefined, originalContract: "", previousChanges: "" }, attachments: [] });
+  await page.goto("/#/requests/r1");
+  await expect(page.locator(".receipt-total")).toContainText("Not provided");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByLabel("Original contract amount", { exact: true }).fill("NaN");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("at most two decimal places");
+  expect(api.requests.get("r1").revision).toBe(1);
+  await page.getByLabel("Original contract amount", { exact: true }).fill("0");
+  await page.getByLabel("Customer phone", { exact: true }).fill("555-0100");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.locator(".receipt-total")).toContainText("$0.00");
+  expect(api.requests.get("r1").job.customerPhone).toBe("555-0100");
+});
+
+test("individual attachment downloads can be retried after a failure", async ({ page }) => {
+  await installMockApi(page, {}, { download: true });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("File download failed");
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
+  expect((await pending).suggestedFilename()).toBe("note.pdf");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("review and editor fit narrow and wide screens without browser errors", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("console", message => { if (message.type() === "error" || message.type() === "warning") errors.push(message.text()); });
+  await installMockApi(page);
+  await page.goto("/#/requests/r1");
+  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeVisible();
+  for (const width of [320, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.screenshot({ path: "tmp/request-summary/review-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.screenshot({ path: "tmp/request-summary/review-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  for (const width of [320, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.screenshot({ path: "tmp/request-summary/editor-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.screenshot({ path: "tmp/request-summary/editor-mobile.png", fullPage: true });
+  expect(errors).toEqual([]);
 });
