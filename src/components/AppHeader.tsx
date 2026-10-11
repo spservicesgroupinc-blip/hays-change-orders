@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, Inbox, Menu, ShieldCheck, X, Zap } from "lucide-react";
+import { ArrowLeft, Inbox, ListChecks, Menu, ShieldCheck, X, Zap } from "lucide-react";
 import type { NavDestination } from "../services/navigation";
 import "./AppHeader.css";
 
@@ -10,6 +10,7 @@ const NAV_ITEMS: {
 }[] = [
   { id: "simple", label: "Quick request", icon: <Zap size={16} /> },
   { id: "home", label: "All requests", icon: <Inbox size={16} /> },
+  { id: "jobs", label: "Jobs", icon: <ListChecks size={16} /> },
 ];
 
 export interface AppHeaderProps {

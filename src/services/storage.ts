@@ -207,6 +207,13 @@ export async function listJobs(): Promise<JobEntry[]> {
   const data = await get<{ jobs: JobEntry[] }>({ action: "listJobs" });
   return data.jobs;
 }
+// Replaces the whole job directory with the parsed report. The caller has
+// already turned the uploaded CSV into JobEntry rows (src/services/jobImport.ts),
+// so the server only has to write them out.
+export async function importJobs(jobs: JobEntry[]): Promise<JobEntry[]> {
+  const data = await post<{ jobs: JobEntry[] }>({ action: "importJobs", jobs });
+  return data.jobs;
+}
 export interface DashboardData {
   requests: RequestSummary[];
   jobs: JobEntry[];

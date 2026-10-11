@@ -17,6 +17,7 @@
  *   POST {action:"claimRequest"}     → { ok, request }
  *   POST {action:"transitionRequest"} → { ok, request }
  *   POST {action:"uploadAttachment"}  → { ok, attachment }
+ *   POST {action:"importJobs"}        → { ok, jobs }  (replaces the Jobs sheet)
  */
 
 const DRIVE_FOLDER_NAME = "hays-change-orders";
@@ -110,6 +111,7 @@ function doPost(e) {
   if (body.action === "claimRequest") return guarded_(function () { return claimRequest_(body); });
   if (body.action === "transitionRequest") return guarded_(function () { return transitionRequest_(body); });
   if (body.action === "uploadAttachment") return guarded_(function () { return uploadAttachment_(body); });
+  if (body.action === "importJobs") return guarded_(function () { return importJobs_(body); });
   return fail_("Unknown action.");
 }
 
@@ -192,6 +194,25 @@ function jobRows_() {
 }
 function listJobs_() {
   return json_({ ok: true, jobs: jobRows_() });
+}
+function importJobs_(body) {
+  // The admin uploads the JobSummaryReport CSV; the client parses it into
+  // JobEntry rows and posts the whole directory. An import replaces the sheet,
+  // so the client must always send the latest full report.
+  if (!body || !Array.isArray(body.jobs)) problem_("VALIDATION", "A jobs array is required.");
+  if (body.jobs.length > 5000) problem_("VALIDATION", "Too many jobs to import at once.");
+  return locked_(function () {
+    const sheet = jobsSheet_();
+    const now = new Date().toISOString();
+    const values = body.jobs.map(function (job) {
+      return [String(job.id || ""), String(job.jobNumber || ""), String(job.customer || ""), String(job.address || ""), String(job.projectManager || ""), String(job.estimator || ""), String(job.status || ""), String(job.customerPhone || ""), String(job.customerEmail || ""), Boolean(job.active), String(job.updatedAt || now), String(job.contractAmount || "")];
+    });
+    const last = sheet.getLastRow();
+    if (last > 1) sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).clearContent();
+    if (values.length) sheet.getRange(2, 1, values.length, JOB_HEADERS.length).setValues(values);
+    SpreadsheetApp.flush();
+    return json_({ ok: true, jobs: body.jobs });
+  });
 }
 function requestRow_(id) {
   const sheet = requestsSheet_();

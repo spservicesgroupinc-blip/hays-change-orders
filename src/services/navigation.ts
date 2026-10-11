@@ -9,23 +9,28 @@
 export type View =
   | { kind: "home" }
   | { kind: "request"; id: string }
+  | { kind: "jobs" }
   | { kind: "simple" };
 
 /** The sections the app header can jump between. */
-export type NavDestination = "home" | "simple";
+export type NavDestination = "home" | "jobs" | "simple";
 
 export const HOME: View = { kind: "home" };
 
 const VIEW_KEY = "hays-active-view";
 
 export function destinationToView(destination: NavDestination): View {
-  return destination === "simple" ? { kind: "simple" } : HOME;
+  if (destination === "simple") return { kind: "simple" };
+  if (destination === "jobs") return { kind: "jobs" };
+  return HOME;
 }
 
 export function viewToHash(view: View): string {
   switch (view.kind) {
     case "request":
       return `#/requests/${encodeURIComponent(view.id)}`;
+    case "jobs":
+      return "#/jobs";
     case "simple":
       return "#/simple";
     default:
@@ -41,6 +46,8 @@ export function hashToView(hash: string): View | null {
   switch (parts[0]) {
     case "simple":
       return { kind: "simple" };
+    case "jobs":
+      return { kind: "jobs" };
     case "requests":
       return parts[1] ? { kind: "request", id: parts[1] } : null;
     default:
@@ -58,6 +65,8 @@ export function viewLabel(view: View): string {
   switch (view.kind) {
     case "request":
       return "Change order";
+    case "jobs":
+      return "Jobs";
     case "simple":
       return "Quick request";
     default:
@@ -86,6 +95,8 @@ export function readStoredView(): View {
     switch (parsed.kind) {
       case "request":
         return parsed.id ? { kind: "request", id: String(parsed.id) } : HOME;
+      case "jobs":
+        return { kind: "jobs" };
       case "simple":
         return { kind: "simple" };
       default:

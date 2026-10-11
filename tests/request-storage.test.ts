@@ -8,6 +8,8 @@ import {
   openRequest,
   saveRequest,
   listRequests,
+  listJobs,
+  importJobs,
   loadDashboard,
   claimRequest,
   transitionRequest,
@@ -15,7 +17,7 @@ import {
   fetchAttachment,
   ApiError,
 } from "../src/services/storage";
-import type { ChangeRequest } from "../src/types";
+import type { ChangeRequest, JobEntry } from "../src/types";
 
 function intakeRequest(): ChangeRequest {
   const request = createRequest();
@@ -133,6 +135,12 @@ function mockBackend() {
             ),
           ),
         getValue: () => rows[row - 1]?.[col - 1] ?? "",
+        // Real Sheets only counts rows that still hold content, so dropping
+        // the cleared rows models getLastRow() after an import replaces a
+        // longer directory with a shorter one.
+        clearContent: () => {
+          rows.splice(row - 1, height);
+        },
         setValues: (values: any[][]) => {
           if (failNextWrite) {
             failNextWrite = false;
@@ -536,6 +544,78 @@ test("bootstrap returns requests and jobs in one round-trip", () => {
   assert.equal(result.ok, true);
   assert.equal(result.requests.length, 1);
   assert.ok(Array.isArray(result.jobs));
+});
+
+function jobEntry(
+  jobNumber: string,
+  customer: string,
+  active: boolean,
+): JobEntry {
+  return {
+    id: randomUUID(),
+    jobNumber,
+    customer,
+    address: "1825 Sprunger St., Fort Wayne, IN 46808",
+    projectManager: "Lance Stanley",
+    estimator: "Russell Shive",
+    status: active ? "Work in Progress" : "Accounts Receivable",
+    customerPhone: "260-555-0100",
+    customerEmail: "pm@example.com",
+    contractAmount: "167045.81",
+    active,
+    updatedAt: "2026-10-11T00:00:00.000Z",
+  };
+}
+
+test("importJobs replaces the directory and listJobs reads it back", async () => {
+  const backend = mockBackend();
+  const restore = backend.installFetch();
+  try {
+    const first = await importJobs([jobEntry("F-26-0366-R", "York Tori", true)]);
+    assert.equal(first.length, 1);
+    assert.deepEqual(
+      (await listJobs()).map((job) => job.jobNumber),
+      ["F-26-0366-R"],
+    );
+
+    // A second import replaces the directory instead of appending to it.
+    await importJobs([
+      jobEntry("F-26-0366-P", "York Tori", true),
+      jobEntry("F-26-0001-S", "Closed Job", false),
+    ]);
+    const jobs = await listJobs();
+    assert.deepEqual(
+      jobs.map((job) => job.jobNumber),
+      ["F-26-0366-P", "F-26-0001-S"],
+    );
+    assert.deepEqual(
+      jobs.map((job) => job.active),
+      [true, false],
+    );
+    assert.equal(jobs[0].contractAmount, "167045.81");
+    assert.equal(jobs[0].projectManager, "Lance Stanley");
+
+    // bootstrap carries the same directory, so the picker sees it on a cold start.
+    assert.equal(backend.get({ action: "bootstrap" }).jobs.length, 2);
+  } finally {
+    restore();
+  }
+});
+
+test("importJobs rejects a missing list and an oversized report", () => {
+  const backend = mockBackend();
+  assert.equal(
+    backend.post({ action: "importJobs" }).code,
+    "VALIDATION",
+  );
+  assert.equal(
+    backend.post({
+      action: "importJobs",
+      jobs: Array.from({ length: 5001 }, () => jobEntry("F-1", "C", true)),
+    }).code,
+    "VALIDATION",
+  );
+  assert.equal(backend.get({ action: "listJobs" }).jobs.length, 0);
 });
 
 test("frontend request APIs round-trip through Code.gs and surface conflicts", async () => {

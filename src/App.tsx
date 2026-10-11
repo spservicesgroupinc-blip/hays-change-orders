@@ -50,6 +50,7 @@ import {
   type View,
 } from "./services/navigation";
 import AppHeader from "./components/AppHeader";
+import AdminJobs from "./components/AdminJobs";
 import SimpleRequest from "./components/SimpleRequest";
 import RequestReview from "./components/RequestReview";
 import PdfViewer from "./components/PdfViewer";
@@ -581,6 +582,10 @@ export default function App() {
       {view.kind === "simple" ? (
         <main className="shell-request" ref={mainRef} tabIndex={-1}>
           <SimpleRequest jobs={jobs} onDone={quickRequestDone} />
+        </main>
+      ) : view.kind === "jobs" ? (
+        <main className="shell-request" ref={mainRef} tabIndex={-1}>
+          <AdminJobs jobs={jobs} onImported={setJobs} />
         </main>
       ) : view.kind === "request" ? (
         <main className="shell-request" ref={mainRef} tabIndex={-1}>
