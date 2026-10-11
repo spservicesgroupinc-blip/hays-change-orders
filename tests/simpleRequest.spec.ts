@@ -445,6 +445,53 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
   });
 });
 
+test("the annotator keeps a labelled Save control on a phone", async ({
+  page,
+}) => {
+  // On a phone the header folds the buttons to their icons (max-width: 430px).
+  // The Save control must survive that fold with its dot and its label: hiding
+  // both left a bare red rectangle, so a PM marking up a photo had no visible
+  // way to keep the marks.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockApi(page);
+  await page.goto("/#/simple");
+  await pickCustomer(page, "York Ridge Apartments");
+  await page
+    .locator('input[type="file"][accept^="image/jpeg"]')
+    .setInputFiles(resolve("tmp/fixtures/photo-800x600.png"));
+  await expect(page.getByRole("img", { name: "Photo 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit photo 1" }).click();
+
+  const editor = page.getByRole("dialog", { name: "Annotate photo" });
+  await expect(editor).toBeVisible();
+  const save = page.getByRole("button", { name: "Save annotated photo" });
+  await expect(save.locator(".photo-annotator-save-dot")).toBeVisible();
+  const saveLabel = save.locator("span").last();
+  await expect(saveLabel).toHaveText("Save");
+  await expect(saveLabel).toBeVisible();
+
+  // Mark up the photo, then save it the way the flow is actually used.
+  const canvas = page.locator("canvas.photo-annotator-canvas");
+  await expect
+    .poll(async () => (await canvas.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(80);
+  const box = await canvas.boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.3);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.55, {
+      steps: 8,
+    });
+    await page.mouse.up();
+  }
+  // The control stays visible and usable once there are marks to keep.
+  await expect(saveLabel).toBeVisible();
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByText("Marked up")).toBeVisible();
+});
+
 test("a photo the endpoint cannot accept (HEIC pick) is converted before upload", async ({
   page,
 }) => {

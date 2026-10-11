@@ -320,7 +320,10 @@
   outline-offset: 2px;
 }
 @media (max-width: 430px) {
-  .photo-annotator-head-button span {
+  /* Cancel folds to its icon on a phone, but the Save button must keep both
+     its dot and its "Save" label: hiding every span in the header left Save as
+     a bare red rectangle, so a PM marking up a photo saw no save control. */
+  .photo-annotator-head-button:not(.photo-annotator-save) span {
     display: none;
   }
   .photo-annotator-head-button {
