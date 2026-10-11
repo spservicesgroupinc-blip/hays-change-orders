@@ -492,28 +492,48 @@ export default function App() {
     }
   }
 
-  async function downloadSummary() {
+  async function downloadSummary(
+    customerDocument = false,
+    previewDocument = false,
+  ) {
     if (!request || busy) return;
-    setBusy("Preparing summary PDF…");
+    setBusy(
+      customerDocument ? "Preparing customer PDF…" : "Preparing summary PDF…",
+    );
     setSaveError("");
     try {
-      const [{ generateRequestPdf, summaryFilename }, response] =
-        await Promise.all([
-          import("./services/requestPdf"),
-          fetch(summaryFontUrl),
-        ]);
+      const [
+        {
+          generateRequestPdf,
+          summaryFilename,
+          generateChangeOrderPdf,
+          changeOrderFilename,
+        },
+        response,
+      ] = await Promise.all([
+        import("./services/requestPdf"),
+        fetch(summaryFontUrl),
+      ]);
       if (!response.ok)
         throw new Error(
           "The PDF font could not be loaded. Try downloading again.",
         );
-      const bytes = await generateRequestPdf(
-        request,
-        new Uint8Array(await response.arrayBuffer()),
-      );
-      downloadBlob(
-        new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
-        summaryFilename(request),
-      );
+      const bytes = await (
+        customerDocument ? generateChangeOrderPdf : generateRequestPdf
+      )(request, new Uint8Array(await response.arrayBuffer()));
+      const blob = new Blob([new Uint8Array(bytes)], {
+        type: "application/pdf",
+      });
+      const name = customerDocument
+        ? changeOrderFilename(request)
+        : summaryFilename(request);
+      if (previewDocument) {
+        setPreview({ name, blob });
+        if (!previewEntry.current) {
+          previewEntry.current = true;
+          window.history.pushState(null, "", window.location.hash);
+        }
+      } else downloadBlob(blob, name);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -657,6 +677,7 @@ export default function App() {
               onRequestInfo={(question) => void requestInfo(question)}
               onSendResponse={(response) => void sendResponse(response)}
               onDownloadSummary={() => void downloadSummary()}
+              onCustomerPdf={(preview) => void downloadSummary(true, preview)}
               onSaved={(saved) => {
                 setRequest(saved);
                 setSaveError("");

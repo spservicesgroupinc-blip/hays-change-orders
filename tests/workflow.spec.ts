@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 /**
  * The review page is where an estimator receives a quick request: they read
  * the intake, download the photos and files, start work, and mark the order
- * complete once it is finished outside the app. These tests pin that flow.
+ * prepare a customer document, and mark the request complete. These tests pin that flow.
  */
 const apiRoute =
   /\/__api__(?:\?|$)|https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?|$)/;
@@ -317,6 +317,125 @@ test("an estimator can send a request back for information and the PM responds",
   await expect(
     page.getByRole("heading", { name: "Estimator review", exact: true }),
   ).toBeVisible();
+});
+
+test("estimator saves final scope and credit, previews and downloads the customer PDF", async ({
+  page,
+}) => {
+  const api = await installMockApi(page, {
+    status: "in_review",
+    estimatorName: "Jamie Estimator",
+    lineNumbers: "+12, -34",
+    knownChangeAmount: "+999.00",
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/#/requests/r1");
+  await expect(
+    page.getByRole("button", { name: "Download customer PDF", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Prepare customer document", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Mark complete", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("Change-order number", { exact: true }).fill("CO-02");
+  await page
+    .getByLabel("Change-order date", { exact: true })
+    .fill("2026-10-11");
+  await page.getByLabel("Added days", { exact: true }).fill("2");
+  await page
+    .getByLabel("Contractor representative", { exact: true })
+    .fill("Jamie Estimator");
+  await page
+    .getByRole("button", { name: "Use submitted descriptions", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Final customer scope", { exact: true }),
+  ).toHaveValue("Wet insulation behind the kitchen wall");
+  await expect(
+    page.getByLabel("Final change amount", { exact: true }),
+  ).toHaveValue("");
+  await page
+    .getByLabel("Final customer scope", { exact: true })
+    .fill("Agreed replacement of kitchen insulation.\nCredit for unused trim.");
+  await page.getByLabel("Final change amount", { exact: true }).fill("-250.10");
+  await page
+    .getByLabel("Previous authorized changes", { exact: true })
+    .fill("25.09");
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `tmp/request-summary/customer-editor-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Download customer PDF", exact: true }),
+  ).toBeEnabled();
+  const saved = api.requests.get("r1");
+  expect(saved.estimatorName).toBe("Jamie Estimator");
+  expect(saved.status).toBe("in_review");
+  expect(saved.finalChangeOrder.amount).toBe("-250.10");
+  await page
+    .getByRole("button", { name: "Preview customer PDF", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", {
+      name: "change-order-F-26-0366-P.pdf",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Close preview", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Mark complete", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: "Prepare customer document",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const pending = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download customer PDF", exact: true })
+    .click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("change-order-F-26-0366-P.pdf");
+  const pdf = await getDocument({
+    data: new Uint8Array(await readFile((await download.path())!)),
+    disableFontFace: true,
+  }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++)
+    text += (await (await pdf.getPage(i)).getTextContent()).items
+      .map((item: any) => item.str)
+      .join(" ");
+  for (const expected of [
+    "Hays + Sons",
+    "CO-02",
+    "2026-10-11",
+    "Agreed replacement of kitchen insulation.",
+    "Credit for unused trim.",
+    "-$250.10",
+    "$166,820.80",
+    "Owner signature",
+    "Contractor signature",
+  ])
+    expect(text).toContain(expected);
+  expect(text).not.toContain("999.00");
+  expect(text).not.toContain("photo1.jpg");
+  await pdf.destroy();
+  expect(errors).toEqual([]);
 });
 
 test("the review page previews a photo and downloads an attachment", async ({

@@ -406,6 +406,10 @@ test("checkbox answers are copied for Dash before submission and saved with the 
     .getByLabel("What changed?", { exact: true })
     .fill("Credit for unused flooring.\nKeep this text.");
   await page
+    .getByLabel("Estimate line numbers", { exact: true })
+    .fill("+12, -34\n+56");
+  await page.getByLabel("Known change amount", { exact: true }).fill("-250.19");
+  await page
     .getByRole("button", { name: "Copy Dash note", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Copied");
@@ -417,6 +421,8 @@ test("checkbox answers are copied for Dash before submission and saved with the 
     "York Ridge Apartments",
     "F-26-0366-P",
     "Credit for unused flooring.\nKeep this text.",
+    "Estimate line numbers: +12, -34\n+56",
+    "Known change amount: -$250.19",
   ])
     expect(copied[0]).toContain(expected);
   await page
@@ -425,6 +431,8 @@ test("checkbox answers are copied for Dash before submission and saved with the 
   await expect(page.getByText(/Sent to estimating/)).toBeVisible();
   expect(api.saved[0].requestType).toBe("insurance_supplement");
   expect(api.saved[0].customerCredits).toBe(true);
+  expect(api.saved[0].lineNumbers).toBe("+12, -34\n+56");
+  expect(api.saved[0].knownChangeAmount).toBe("-250.19");
 });
 
 test("a photo is marked up before it is sent, with an optional PDF", async ({

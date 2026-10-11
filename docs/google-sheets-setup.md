@@ -146,6 +146,12 @@ be edited. Keep the backend update in place if rolling back the frontend.
   full documents.
 - **Revisions**: saves and status changes carry an expected revision and a
   retry identifier, so a stale tab cannot overwrite a newer edit.
+- **Customer documents**: optional `lineNumbers`, `knownChangeAmount`, and
+  `finalChangeOrder` (scope and signed amount) are stored in the existing
+  version-2 request snapshot. No sheet columns or data migration are needed.
+  Deploy the updated Apps Script validation **before** the frontend build.
+  Customer PDFs are generated locally from saved information; they do not
+  upload a signed document or send anything to the customer automatically.
 - **Local tests** expect the default local API path (`/__api__`) and are mocked
   in Playwright. Do not point `.env.local` at the real URL while running the
   browser tests.

@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Download,
+  Eye,
   Pencil,
   Send,
   TriangleAlert,
@@ -12,6 +13,11 @@ import IntakeReceipt from "./IntakeReceipt";
 import RequestEditor from "./RequestEditor";
 import CopyDashNote from "./CopyDashNote";
 import { formatDashNote } from "../services/dashNote";
+import {
+  finalDocumentError,
+  finalContractTotal,
+  signedAmountLabel,
+} from "../services/changeOrder";
 import "./RequestReview.css";
 
 export default function RequestReview({
@@ -25,6 +31,7 @@ export default function RequestReview({
   onRequestInfo,
   onSendResponse,
   onDownloadSummary,
+  onCustomerPdf,
   onSaved,
   onReload,
   onBusy,
@@ -40,6 +47,7 @@ export default function RequestReview({
   onRequestInfo: (question: string) => void;
   onSendResponse: (response: string) => void;
   onDownloadSummary: () => void;
+  onCustomerPdf: (preview: boolean) => void;
   onSaved: (request: ChangeRequest) => void;
   onReload: () => Promise<ChangeRequest>;
   onBusy: (message: string) => void;
@@ -50,6 +58,8 @@ export default function RequestReview({
   const [asking, setAsking] = useState(false);
   const [response, setResponse] = useState("");
   const [editing, setEditing] = useState(false);
+  const [documentMode, setDocumentMode] = useState(false);
+  const documentError = finalDocumentError(request);
 
   return (
     <div className="review">
@@ -67,7 +77,10 @@ export default function RequestReview({
           <button
             className="button"
             disabled={Boolean(busy)}
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setDocumentMode(false);
+              setEditing(true);
+            }}
           >
             <Pencil size={16} />
             Edit request
@@ -98,6 +111,7 @@ export default function RequestReview({
           onReload={onReload}
           onBusy={onBusy}
           onLeaveGuard={onLeaveGuard}
+          documentMode={documentMode}
         />
       ) : (
         <IntakeReceipt
@@ -107,6 +121,61 @@ export default function RequestReview({
           onDownload={onDownload}
         />
       )}
+
+      {!editing ? (
+        <section className="review-card customer-document">
+          <h2>Customer change order</h2>
+          {request.finalChangeOrder?.scope.trim() ? (
+            <p style={{ whiteSpace: "pre-wrap" }}>
+              {request.finalChangeOrder.scope}
+            </p>
+          ) : null}
+          {request.finalChangeOrder?.amount.trim() ? (
+            <p>
+              <strong>
+                Final change:{" "}
+                {signedAmountLabel(request.finalChangeOrder.amount)} · New
+                contract total: {finalContractTotal(request)}
+              </strong>
+            </p>
+          ) : null}
+          <p>
+            {documentError ||
+              "The saved customer document is ready to preview or download for approval."}
+          </p>
+          <div className="button-row">
+            {request.status !== "completed" ? (
+              <button
+                className="button primary"
+                disabled={Boolean(busy)}
+                onClick={() => {
+                  setDocumentMode(true);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={16} />
+                Prepare customer document
+              </button>
+            ) : null}
+            <button
+              className="button"
+              disabled={Boolean(busy) || Boolean(documentError)}
+              onClick={() => onCustomerPdf(true)}
+            >
+              <Eye size={16} />
+              Preview customer PDF
+            </button>
+            <button
+              className="button"
+              disabled={Boolean(busy) || Boolean(documentError)}
+              onClick={() => onCustomerPdf(false)}
+            >
+              <Download size={16} />
+              Download customer PDF
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <fieldset className="review-workflow" disabled={editing || Boolean(busy)}>
         {request.status === "submitted" ? (
@@ -147,8 +216,9 @@ export default function RequestReview({
             <h2>Estimator review</h2>
             <p>
               {request.estimatorName || "The estimator"} is working this
-              request. Download the files, complete the change order outside the
-              app, then mark it complete.
+              request. Prepare and save the customer document, preview the PDF,
+              then download it for customer approval and mark the request
+              complete.
             </p>
             {asking ? (
               <div className="review-ask">

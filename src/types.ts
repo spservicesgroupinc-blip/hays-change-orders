@@ -27,6 +27,11 @@ export interface ChangeRequest {
   schemaVersion: 2;
   requestType?: "change_order" | "insurance_supplement";
   customerCredits?: boolean;
+  /** Signed estimate line references, e.g. +12, -34; kept as submitted text. */
+  lineNumbers?: string;
+  /** Optional submitter estimate; never automatically used as the final price. */
+  knownChangeAmount?: string;
+  finalChangeOrder?: { scope: string; amount: string };
   id: string;
   revision: number;
   createdAt: string;
@@ -101,4 +106,3 @@ export function today(): string {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-

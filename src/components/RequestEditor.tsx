@@ -18,6 +18,11 @@ import {
   preparePhotoForUpload,
 } from "../services/photoUpload";
 import { moneyCents } from "../services/contract";
+import {
+  pricingInputError,
+  finalContractTotal,
+  signedAmountLabel,
+} from "../services/changeOrder";
 import "./RequestEditor.css";
 import RequestQuestions from "./RequestQuestions";
 
@@ -37,6 +42,17 @@ const JOB_FIELDS = [
   ["originalContract", "Original contract amount"],
   ["previousChanges", "Previous authorized changes"],
 ] as const;
+const DOCUMENT_FIELDS = [
+  ["orderNumber", "Change-order number"],
+  ["date", "Change-order date"],
+  ["addedDays", "Added days"],
+  ["carrier", "Insurance carrier"],
+  ["claim", "Claim number"],
+  ["branchName", "Branch name"],
+  ["branchAddress", "Branch address"],
+  ["branchPhone", "Branch phone"],
+  ["branchContact", "Contractor representative"],
+] as const;
 
 export default function RequestEditor({
   request,
@@ -45,6 +61,7 @@ export default function RequestEditor({
   onReload,
   onBusy,
   onLeaveGuard,
+  documentMode = false,
 }: {
   request: ChangeRequest;
   onSaved: (request: ChangeRequest) => void;
@@ -52,6 +69,7 @@ export default function RequestEditor({
   onReload: () => Promise<ChangeRequest>;
   onBusy: (message: string) => void;
   onLeaveGuard: (guard: (() => boolean) | null) => void;
+  documentMode?: boolean;
 }) {
   const [draft, setDraft] = useState(() => structuredClone(request));
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -140,6 +158,11 @@ export default function RequestEditor({
 
   async function save() {
     if (saving.current || conflict) return;
+    const pricingError = pricingInputError(draft);
+    if (pricingError) {
+      setError(pricingError);
+      return;
+    }
     for (const key of ["originalContract", "previousChanges"] as const) {
       if (draft.job[key].trim() && moneyCents(draft.job[key]) === null) {
         setError(
@@ -240,7 +263,7 @@ export default function RequestEditor({
       }}
     >
       <h2 ref={heading} tabIndex={-1}>
-        Edit request
+        {documentMode ? "Prepare customer document" : "Edit request"}
       </h2>
       <p>
         Save your corrections without changing the request’s status or assigned
@@ -269,6 +292,8 @@ export default function RequestEditor({
         <RequestQuestions
           requestType={draft.requestType}
           customerCredits={draft.customerCredits}
+          lineNumbers={draft.lineNumbers}
+          knownChangeAmount={draft.knownChangeAmount}
           onChange={(answers) =>
             setDraft((previous) => ({ ...previous, ...answers }))
           }
@@ -294,6 +319,121 @@ export default function RequestEditor({
             </label>
           ))}
         </div>
+        <details className="editor-document" open={documentMode || undefined}>
+          <summary>Customer change order</summary>
+          <p>
+            Review the customer scope and final price, then save before
+            previewing or downloading the document.
+          </p>
+          <div className="editor-job-grid">
+            {DOCUMENT_FIELDS.map(([key, label]) => (
+              <label className="field" key={key}>
+                <span>{label}</span>
+                <input
+                  aria-label={label}
+                  type={key === "date" ? "date" : "text"}
+                  value={draft.job[key] ?? ""}
+                  onChange={(event) => updateJob(key, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          <label className="request-checkbox">
+            <input
+              type="checkbox"
+              checked={draft.job.insuranceRelated}
+              onChange={(event) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  job: {
+                    ...previous.job,
+                    insuranceRelated: event.target.checked,
+                  },
+                }))
+              }
+            />
+            <span>Insurance-related work</span>
+          </label>
+          <label className="field">
+            <span>Final customer scope</span>
+            <textarea
+              aria-label="Final customer scope"
+              rows={6}
+              value={draft.finalChangeOrder?.scope ?? ""}
+              onChange={(event) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  finalChangeOrder: {
+                    amount: previous.finalChangeOrder?.amount ?? "",
+                    scope: event.target.value,
+                  },
+                }))
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              if (
+                draft.finalChangeOrder?.scope.trim() &&
+                !window.confirm(
+                  "Replace the final customer scope with the submitted descriptions?",
+                )
+              )
+                return;
+              setDraft((previous) => ({
+                ...previous,
+                finalChangeOrder: {
+                  amount: previous.finalChangeOrder?.amount ?? "",
+                  scope: previous.requestedChanges
+                    .map((change) =>
+                      [
+                        change.room,
+                        change.description,
+                        change.measurements &&
+                          `Measurements: ${change.measurements}`,
+                        change.materials && `Materials: ${change.materials}`,
+                        change.scheduleImpact &&
+                          `Schedule: ${change.scheduleImpact}`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n"),
+                    )
+                    .join("\n\n"),
+                },
+              }));
+            }}
+          >
+            Use submitted descriptions
+          </button>
+          <label className="field">
+            <span>Final change amount</span>
+            <input
+              aria-label="Final change amount"
+              type="text"
+              placeholder="+1250.19 or -250.00"
+              value={draft.finalChangeOrder?.amount ?? ""}
+              onChange={(event) =>
+                setDraft((previous) => ({
+                  ...previous,
+                  finalChangeOrder: {
+                    scope: previous.finalChangeOrder?.scope ?? "",
+                    amount: event.target.value,
+                  },
+                }))
+              }
+            />
+            <small>
+              + increases the contract; - gives a credit. Enter 0.00 for no
+              price change. Submitter’s known amount:{" "}
+              {signedAmountLabel(draft.knownChangeAmount)}.
+            </small>
+          </label>
+          <p>
+            <strong>New contract total: {finalContractTotal(draft)}</strong>
+          </p>
+        </details>
         <h3>Submitted text</h3>
         {draft.requestedChanges.map((change, index) => (
           <div className="editor-note" key={change.id}>

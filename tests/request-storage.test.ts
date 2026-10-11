@@ -288,8 +288,14 @@ function save(
 
 function submittedRequest(backend: ReturnType<typeof mockBackend>) {
   const request = save(backend, intakeRequest()).request;
-  return backend.post({ action: "transitionRequest", id: request.id, expectedRevision: request.revision,
-    status: "submitted", question: "", mutationId: randomUUID() }).request as ChangeRequest;
+  return backend.post({
+    action: "transitionRequest",
+    id: request.id,
+    expectedRevision: request.revision,
+    status: "submitted",
+    question: "",
+    mutationId: randomUUID(),
+  }).request as ChangeRequest;
 }
 
 test("submitted requests can be edited without changing review state or losing scope", () => {
@@ -312,12 +318,27 @@ test("submitted requests can be edited without changing review state or losing s
 test("in-review edits and uploads preserve the assigned estimator", () => {
   const backend = mockBackend();
   let request = submittedRequest(backend);
-  request = backend.post({ action: "claimRequest", id: request.id, expectedRevision: request.revision,
-    estimatorName: "Estimator A", mutationId: randomUUID() }).request;
+  request = backend.post({
+    action: "claimRequest",
+    id: request.id,
+    expectedRevision: request.revision,
+    estimatorName: "Estimator A",
+    mutationId: randomUUID(),
+  }).request;
   request.requestedChanges[0].description = "More detail";
-  const attachment = backend.post({ action: "uploadAttachment", requestId: request.id,
-    attachmentId: randomUUID(), mutationId: randomUUID(), file: { name: "details.pdf", kind: "document",
-      mimeType: "application/pdf", size: 9, data: Buffer.from("%PDF-1.4\n").toString("base64") } }).attachment;
+  const attachment = backend.post({
+    action: "uploadAttachment",
+    requestId: request.id,
+    attachmentId: randomUUID(),
+    mutationId: randomUUID(),
+    file: {
+      name: "details.pdf",
+      kind: "document",
+      mimeType: "application/pdf",
+      size: 9,
+      data: Buffer.from("%PDF-1.4\n").toString("base64"),
+    },
+  }).attachment;
   request.attachments = [attachment];
   const result = save(backend, request);
   assert.equal(result.ok, true);
@@ -347,11 +368,24 @@ test("edits validate optional contact fields and nonblank money, retaining legac
 test("queued requests accept attachments and cannot bypass the status action", () => {
   const backend = mockBackend();
   const request = submittedRequest(backend);
-  const result = backend.post({ action: "uploadAttachment", requestId: request.id,
-    attachmentId: randomUUID(), mutationId: randomUUID(), file: { name: "details.pdf", kind: "document",
-      mimeType: "application/pdf", size: 9, data: Buffer.from("%PDF-1.4\n").toString("base64") } });
+  const result = backend.post({
+    action: "uploadAttachment",
+    requestId: request.id,
+    attachmentId: randomUUID(),
+    mutationId: randomUUID(),
+    file: {
+      name: "details.pdf",
+      kind: "document",
+      mimeType: "application/pdf",
+      size: 9,
+      data: Buffer.from("%PDF-1.4\n").toString("base64"),
+    },
+  });
   assert.equal(result.ok, true);
-  assert.equal(save(backend, { ...request, status: "completed" }).code, "STATE");
+  assert.equal(
+    save(backend, { ...request, status: "completed" }).code,
+    "STATE",
+  );
 });
 
 test("request checkbox answers round-trip and reject malformed values", () => {
@@ -364,8 +398,14 @@ test("request checkbox answers round-trip and reject malformed values", () => {
   const opened = backend.get({ action: "openRequest", id: request.id }).request;
   assert.equal(opened.requestType, "insurance_supplement");
   assert.equal(opened.customerCredits, true);
-  assert.equal(save(backend, { ...opened, requestType: "invalid" } as any).code, "VALIDATION");
-  assert.equal(save(backend, { ...opened, customerCredits: "yes" } as any).code, "VALIDATION");
+  assert.equal(
+    save(backend, { ...opened, requestType: "invalid" } as any).code,
+    "VALIDATION",
+  );
+  assert.equal(
+    save(backend, { ...opened, customerCredits: "yes" } as any).code,
+    "VALIDATION",
+  );
 });
 
 test("a request saves, lists and opens through the mocked Apps Script", () => {
@@ -654,7 +694,9 @@ test("importJobs replaces the directory and listJobs reads it back", async () =>
   const backend = mockBackend();
   const restore = backend.installFetch();
   try {
-    const first = await importJobs([jobEntry("F-26-0366-R", "York Tori", true)]);
+    const first = await importJobs([
+      jobEntry("F-26-0366-R", "York Tori", true),
+    ]);
     assert.equal(first.length, 1);
     assert.deepEqual(
       (await listJobs()).map((job) => job.jobNumber),
@@ -687,10 +729,7 @@ test("importJobs replaces the directory and listJobs reads it back", async () =>
 
 test("importJobs rejects a missing list and an oversized report", () => {
   const backend = mockBackend();
-  assert.equal(
-    backend.post({ action: "importJobs" }).code,
-    "VALIDATION",
-  );
+  assert.equal(backend.post({ action: "importJobs" }).code, "VALIDATION");
   assert.equal(
     backend.post({
       action: "importJobs",
@@ -759,6 +798,37 @@ test("frontend request APIs round-trip through Code.gs and surface conflicts", a
   } finally {
     restore();
   }
+});
+
+test("signed line changes and final customer pricing round-trip through backend validation", () => {
+  const backend = mockBackend();
+  const request = intakeRequest();
+  request.lineNumbers = "+12, -34\n+56";
+  request.knownChangeAmount = "+1250.19";
+  request.finalChangeOrder = {
+    scope: "Customer-approved scope",
+    amount: "-250.10",
+  };
+  const result = save(backend, request);
+  assert.equal(result.ok, true);
+  const opened = backend.get({ action: "openRequest", id: request.id }).request;
+  assert.equal(opened.lineNumbers, request.lineNumbers);
+  assert.equal(opened.knownChangeAmount, request.knownChangeAmount);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(opened.finalChangeOrder)),
+    request.finalChangeOrder,
+  );
+  for (const invalid of [
+    { lineNumbers: "12" },
+    { knownChangeAmount: "+-12" },
+    { knownChangeAmount: "+1.234" },
+    { finalChangeOrder: { scope: "Scope", amount: "1e3" } },
+    { finalChangeOrder: null },
+  ])
+    assert.equal(
+      save(backend, { ...opened, ...invalid } as any).code,
+      "VALIDATION",
+    );
 });
 
 test("loadDashboard loads requests and jobs and falls back when bootstrap is missing", async () => {

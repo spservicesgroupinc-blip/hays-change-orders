@@ -16,6 +16,18 @@
   margin: 8px 0 0;
   font-size: 15px;
 }
+.editor-document {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+.editor-document summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.editor-document > * + * {
+  margin-top: 14px;
+}
 .editor-note {
   display: flex;
   flex-direction: column;
@@ -67,6 +79,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+.customer-document .button-row {
+  flex-wrap: wrap;
+}
+.review-workflow .button-row {
+  flex-wrap: wrap;
+}
+.customer-document p {
+  overflow-wrap: anywhere;
 }
 @media (max-width: 560px) {
   .editor-job-grid {

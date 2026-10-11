@@ -1,5 +1,6 @@
 import type { ChangeRequest } from "../types";
 import { contractAmounts } from "./contract";
+import { signedAmountLabel, finalContractTotal } from "./changeOrder";
 
 export function requestTypeLabel(type: ChangeRequest["requestType"]): string {
   return type === "change_order"
@@ -47,6 +48,8 @@ export function formatDashNote(
   field("Original contract", amounts.original);
   field("Previous authorized changes", amounts.previous);
   field("Total contract price", amounts.total);
+  field("Estimate line numbers", request.lineNumbers);
+  field("Known change amount", signedAmountLabel(request.knownChangeAmount));
   lines.push("", "SUBMITTED TEXT");
   if (!request.requestedChanges.length)
     lines.push("No written description provided.");
@@ -67,6 +70,17 @@ export function formatDashNote(
   });
   if (request.informationQuestion?.trim()) {
     lines.push("", "INFORMATION REQUEST", request.informationQuestion);
+  }
+  if (request.finalChangeOrder) {
+    lines.push("", "CUSTOMER CHANGE ORDER");
+    field("Final customer scope", request.finalChangeOrder.scope);
+    field(
+      "Final change amount",
+      signedAmountLabel(request.finalChangeOrder.amount),
+    );
+    field("New contract total", finalContractTotal(request));
+    field("Change-order date", job.date);
+    field("Added days", job.addedDays);
   }
   lines.push("", "ATTACHMENTS");
   lines.push(

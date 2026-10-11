@@ -6,6 +6,8 @@ import { createRequest, createRequestedChange } from "../src/services/requests";
 import {
   generateRequestPdf,
   summaryFilename,
+  generateChangeOrderPdf,
+  changeOrderFilename,
 } from "../src/services/requestPdf";
 
 const fontPath = new URL(
@@ -95,6 +97,91 @@ test("summary PDF includes contact details, prices, notes and attachment names",
   ])
     assert.ok(text.includes(expected), expected);
   assert.equal(summaryFilename(request), "request-summary-FW-26-001.pdf");
+});
+
+test("customer change order has letterhead, agreed scope, exact revised total and signature lines", async () => {
+  const request = createRequest();
+  Object.assign(request.job, {
+    customer: "José Customer",
+    customerPhone: "260-555-0144",
+    customerEmail: "customer@example.com",
+    address: "123 Sample Street",
+    jobNumber: "FW-26-001",
+    date: "2026-10-11",
+    originalContract: "1000.01",
+    previousChanges: "25.09",
+    insuranceRelated: false,
+    addedDays: "2",
+    branchContact: "Jamie Estimator",
+  });
+  request.lineNumbers = "+12, -34";
+  request.knownChangeAmount = "+999.00";
+  request.finalChangeOrder = {
+    scope: "Remove selected trim.\nInstall agreed replacement material.",
+    amount: "-250.10",
+  };
+  request.requestedChanges = [
+    {
+      ...createRequestedChange(),
+      description: "INTERNAL NOTE SHOULD NOT PRINT",
+    },
+  ];
+  const font = new Uint8Array(await readFile(fontPath));
+  const bytes = await generateChangeOrderPdf(request, font);
+  await mkdir("tmp/request-summary", { recursive: true });
+  await writeFile("tmp/request-summary/customer-short.pdf", bytes);
+  const pages = await readPdf(bytes);
+  const text = pages.map((page) => page.text).join(" ");
+  for (const expected of [
+    "Hays + Sons",
+    "909 Production Road",
+    "Change Order / Addendum",
+    "José Customer",
+    "260-555-0144",
+    "customer@example.com",
+    "FW-26-001",
+    "CO-01",
+    "2026-10-11",
+    "Remove selected trim.",
+    "Install agreed replacement material.",
+    "$1,025.10",
+    "-$250.10",
+    "$775.00",
+    "Owner signature",
+    "Contractor signature",
+    "paid before work",
+    "Jamie Estimator",
+  ])
+    assert.ok(text.includes(expected), expected);
+  assert.ok(!text.includes("INTERNAL NOTE"));
+  assert.ok(!text.includes("999.00"));
+  assert.equal(changeOrderFilename(request), "change-order-FW-26-001.pdf");
+  request.finalChangeOrder.scope = Array.from(
+    { length: 60 },
+    (_, i) =>
+      `Scope paragraph ${i}: Fully retain agreed customer work and materials. José approves these details.`,
+  ).join("\n\n");
+  const longBytes = await generateChangeOrderPdf(request, font);
+  await writeFile("tmp/request-summary/customer-long.pdf", longBytes);
+  const longPages = await readPdf(longBytes);
+  const longText = longPages.map((page) => page.text).join(" ");
+  assert.ok(longPages.length >= 3);
+  for (let i = 0; i < 60; i++)
+    assert.ok(longText.includes(`Scope paragraph ${i}:`));
+  assert.ok(longText.includes("Owner signature"));
+  for (const page of [...pages, ...longPages])
+    for (const item of page.items) {
+      assert.ok(
+        item.transform[4] >= 47 && item.transform[4] + item.width <= 565,
+        item.str,
+      );
+      assert.ok(item.transform[5] >= 27 && item.transform[5] <= 745, item.str);
+    }
+  request.finalChangeOrder.amount = "";
+  await assert.rejects(
+    generateChangeOrderPdf(request, font),
+    /final change amount/,
+  );
 });
 
 test("long PDF notes wrap and paginate without losing the final text or crossing margins", async () => {

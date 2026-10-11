@@ -281,6 +281,14 @@ function shapeCheck_(request) {
   if (!request || request.schemaVersion !== 2 || !request.id || typeof request.id !== "string" || request.id.length > 100 || !request.job) problem_("VALIDATION", "A valid version-2 request is required.");
   if (request.requestType !== undefined && ["change_order", "insurance_supplement"].indexOf(request.requestType) < 0) problem_("VALIDATION", "Choose a valid request type.");
   if (request.customerCredits !== undefined && typeof request.customerCredits !== "boolean") problem_("VALIDATION", "Customer credits must be a checkbox answer.");
+  ["lineNumbers", "knownChangeAmount"].forEach(function(key) { if (request[key] !== undefined && typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
+  if (request.lineNumbers && request.lineNumbers.trim() && !/^[+-][1-9]\d*(?:[\s,]+[+-][1-9]\d*)*$/.test(request.lineNumbers.trim())) problem_("VALIDATION", "Enter signed line numbers, such as +12, -34.");
+  if (request.knownChangeAmount && request.knownChangeAmount.trim() && !/^[+-]?\d+(?:\.\d{1,2})?$/.test(request.knownChangeAmount.trim())) problem_("VALIDATION", "Enter a valid known change dollar amount.");
+  if (request.finalChangeOrder !== undefined) {
+    const final = request.finalChangeOrder;
+    if (!final || typeof final !== "object" || typeof final.scope !== "string" || typeof final.amount !== "string") problem_("VALIDATION", "Final scope and amount must be text.");
+    if (final.amount.trim() && !/^[+-]?\d+(?:\.\d{1,2})?$/.test(final.amount.trim())) problem_("VALIDATION", "Enter a valid final change dollar amount.");
+  }
   ["requestedChanges", "attachments"].forEach(function(key) { if (!Array.isArray(request[key])) problem_("VALIDATION", key + " must be a list."); });
   ["estimatorName", "informationQuestion"].forEach(function(key) { if (typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
   const jobKeys = ["customer", "address", "jobNumber", "projectManager", "branchName", "branchAddress", "branchPhone", "branchContact", "carrier", "claim", "orderNumber", "date", "originalContract", "previousChanges", "addedDays"];
