@@ -8,8 +8,8 @@ deployed Apps Script web app.
 
 1. Go to <https://sheets.google.com> and create a new blank spreadsheet named
    **Hays Change Orders**.
-2. Optionally rename the first sheet. The script creates a **Drafts** sheet
-   automatically on first use, so the default sheet can stay.
+2. Optionally rename the first sheet. The script creates the **Requests** and
+   **Jobs** sheets automatically on first use, so the default sheet can stay.
 
 ## 2. Paste the script
 
@@ -33,10 +33,9 @@ step 4.
    **Change Orders → Run one-time setup** menu.
 2. Accept the OAuth consent for **Google Sheets** and **Google Drive** when
    prompted.
-3. `setup()` creates the **Drafts** sheet (legacy change orders), the
-   **Requests** sheet (PM request queue), the **Jobs** sheet (job directory),
-   and the **hays-change-orders** Drive folder. It shows a dialog with the
-   deploy instructions.
+3. `setup()` creates the **Requests** sheet (request queue), the **Jobs**
+   sheet (job directory), and the **hays-change-orders** Drive folder. It
+   shows a dialog with the deploy instructions.
 
 Re-running `setup()` is safe: it reuses the existing sheets and folder. If the
 spreadsheet already has a **Jobs** sheet from an earlier version, `setup()`
@@ -87,18 +86,13 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
   immutable revision files in a request-owned Drive folder, so a save or claim
   cannot be overwritten by a competing window. Attachments are staged in the
   request folder and only linked once a save references them.
-- **Legacy drafts**: the **Drafts** sheet and the `list/open/save/delete/pdf/
-  uploadPdf` endpoints remain for the legacy four-step editor. Converting a
-  legacy draft copies its PDFs into a new request and carries prior pricing
-  forward for estimator review.
 - **Upload size**: the client caps uploads at 15 MB. Apps Script web-app POST
   bodies are limited, and files travel as base64 (~1.33× their size).
-- **Job directory**: the **Jobs** sheet is maintained from the app's **Jobs**
-  page — import the Dash JobSummaryReport CSV (`GET ?action=listJobs`,
-  `POST {action:"importJobs"}`). Importing replaces the whole list. Project
-  managers pick a job in the request form to autofill the job number,
-  customer, property address, and responsible project manager, plus the
-  customer's **original contract amount** when the uploaded report carries one.
+- **Job directory**: the **Jobs** sheet is maintained directly in Google
+  Sheets (`GET ?action=listJobs`). Project managers pick a job in the quick
+  request form to autofill the job number, customer, property address, and
+  responsible project manager, plus the customer's **original contract
+  amount** when the directory carries one.
   That amount comes from the export's **`Estimate Amount`** column (the parser
   also accepts `Total Estimate Amount`, `Contract Amount`, `Original Contract
   Amount`, `Original Contract`, `Contract Price`, `Contract Total`, `Total
