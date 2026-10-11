@@ -1,6 +1,49 @@
 import type { ChangeRequest } from "../types";
 import { moneyCents, formatCents } from "./contract";
 
+/** Start document preparation with submitted information; retain estimator corrections. */
+export function customerDocumentDraft(request: ChangeRequest): ChangeRequest {
+  const scope = request.requestedChanges
+    .map((change, index) =>
+      [
+        request.requestedChanges.length > 1
+          ? `Change ${index + 1}${change.room ? ` - ${change.room}` : ""} (${change.action})`
+          : [
+              change.room,
+              change.action !== "add" ? `${change.action} work` : "",
+            ]
+              .filter(Boolean)
+              .join(" - "),
+        change.description,
+        change.measurements && `Measurements: ${change.measurements}`,
+        change.materials && `Materials: ${change.materials}`,
+        change.scheduleImpact && `Schedule: ${change.scheduleImpact}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+  return {
+    ...request,
+    job: {
+      ...request.job,
+      branchContact: request.job.branchContact?.trim()
+        ? request.job.branchContact
+        : request.estimatorName,
+    },
+    finalChangeOrder: {
+      ...request.finalChangeOrder,
+      scope: request.finalChangeOrder?.scope.trim()
+        ? request.finalChangeOrder.scope
+        : scope,
+      amount: request.finalChangeOrder?.amount.trim()
+        ? request.finalChangeOrder.amount
+        : (request.knownChangeAmount ?? ""),
+    },
+  };
+}
+
 export const signedMoneyCents = (value: string): bigint | null =>
   /^[+-]?\d+(?:\.\d{1,2})?$/.test(value.trim())
     ? moneyCents(value.trim().replace(/^\+/, ""))

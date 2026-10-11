@@ -6,8 +6,86 @@ import {
   finalContractTotal,
   finalDocumentError,
   pricingInputError,
+  customerDocumentDraft,
 } from "../src/services/changeOrder";
 import { formatDashNote } from "../src/services/dashNote";
+import { createRequestedChange } from "../src/services/requests";
+
+test("document preparation inherits signed prices, scope entries, and job information", () => {
+  const request = createRequest();
+  request.estimatorName = "Jamie Estimator";
+  request.job.originalContract = "1000.00";
+  request.lineNumbers = "+12, -34";
+  request.requestedChanges = [
+    {
+      ...createRequestedChange(),
+      room: "Kitchen",
+      description: "Replace insulation",
+      measurements: "12 square feet",
+      materials: "R-13",
+      scheduleImpact: "2 days",
+    },
+    {
+      ...createRequestedChange(),
+      action: "remove",
+      room: "Bedroom",
+      description: "Credit unused trim",
+    },
+  ];
+  for (const amount of ["+1250.19", "-250.10", "0.00", ""]) {
+    request.knownChangeAmount = amount;
+    const draft = customerDocumentDraft(request);
+    assert.equal(draft.finalChangeOrder!.amount, amount);
+    for (const text of [
+      "Change 1 - Kitchen (add)",
+      "Replace insulation",
+      "12 square feet",
+      "R-13",
+      "2 days",
+      "Change 2 - Bedroom (remove)",
+      "Credit unused trim",
+    ])
+      assert.ok(draft.finalChangeOrder!.scope.includes(text));
+    assert.equal(draft.lineNumbers, request.lineNumbers);
+    assert.equal(draft.job.branchContact, "Jamie Estimator");
+    assert.equal(draft.job.originalContract, "1000.00");
+    assert.equal(request.finalChangeOrder, undefined);
+  }
+  request.requestedChanges = [
+    {
+      ...createRequestedChange(),
+      room: "Kitchen",
+      action: "remove",
+      description: "Unused trim",
+    },
+  ];
+  assert.ok(
+    customerDocumentDraft(request).finalChangeOrder!.scope.includes(
+      "Kitchen - remove work",
+    ),
+  );
+});
+
+test("preparation preserves estimator corrections and fills older incomplete document fields", () => {
+  const request = createRequest();
+  request.knownChangeAmount = "+999.00";
+  request.requestedChanges = [
+    { ...createRequestedChange(), description: "Submitted scope" },
+  ];
+  request.job.branchContact = "Branch Manager";
+  request.finalChangeOrder = {
+    scope: "Estimator revised scope",
+    amount: "0.00",
+  };
+  const draft = customerDocumentDraft(request);
+  assert.deepEqual(draft.finalChangeOrder, request.finalChangeOrder);
+  assert.equal(draft.job.branchContact, "Branch Manager");
+  request.finalChangeOrder = { scope: "Estimator revised scope", amount: "" };
+  assert.deepEqual(customerDocumentDraft(request).finalChangeOrder, {
+    scope: "Estimator revised scope",
+    amount: "+999.00",
+  });
+});
 
 test("signed changes preserve exact cents, credits, and explicit zero", () => {
   const request = createRequest();

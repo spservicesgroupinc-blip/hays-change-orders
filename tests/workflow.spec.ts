@@ -345,18 +345,18 @@ test("estimator saves final scope and credit, previews and downloads the custome
     .getByLabel("Change-order date", { exact: true })
     .fill("2026-10-11");
   await page.getByLabel("Added days", { exact: true }).fill("2");
-  await page
-    .getByLabel("Contractor representative", { exact: true })
-    .fill("Jamie Estimator");
-  await page
-    .getByRole("button", { name: "Use submitted descriptions", exact: true })
-    .click();
   await expect(
     page.getByLabel("Final customer scope", { exact: true }),
   ).toHaveValue("Wet insulation behind the kitchen wall");
   await expect(
     page.getByLabel("Final change amount", { exact: true }),
-  ).toHaveValue("");
+  ).toHaveValue("999.00");
+  await expect(
+    page.getByLabel("Known change amount", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByLabel("Contractor representative", { exact: true }),
+  ).toHaveValue("Jamie Estimator");
   await page
     .getByLabel("Final customer scope", { exact: true })
     .fill("Agreed replacement of kitchen insulation.\nCredit for unused trim.");
@@ -391,6 +391,26 @@ test("estimator saves final scope and credit, previews and downloads the custome
   expect(saved.estimatorName).toBe("Jamie Estimator");
   expect(saved.status).toBe("in_review");
   expect(saved.finalChangeOrder.amount).toBe("-250.10");
+  await page
+    .getByRole("button", { name: "Prepare customer document", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Final customer scope", { exact: true }),
+  ).toHaveValue(
+    "Agreed replacement of kitchen insulation.\nCredit for unused trim.",
+  );
+  await expect(
+    page.getByLabel("Final change amount", { exact: true }),
+  ).toHaveValue("250.10");
+  await expect(
+    page
+      .getByRole("group", {
+        name: "Final change amount direction",
+        exact: true,
+      })
+      .getByRole("button", { name: "Credit", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page
     .getByRole("button", { name: "Preview customer PDF", exact: true })
     .click();
@@ -444,6 +464,99 @@ test("estimator saves final scope and credit, previews and downloads the custome
   await pdf.destroy();
   expect(errors).toEqual([]);
 });
+
+for (const [label, amount] of [
+  ["increase", "+1250.19"],
+  ["credit", "-250.10"],
+  ["zero", "0.00"],
+  ["unknown", ""],
+]) {
+  test(`submitted ${label} price carries into document preparation without re-entry`, async ({
+    page,
+  }) => {
+    const api = await installMockApi(page, {
+      status: "in_review",
+      estimatorName: "Jamie Estimator",
+      lineNumbers: "+12, -34",
+      knownChangeAmount: amount,
+    });
+    await page.goto("/#/requests/r1");
+    await page
+      .getByRole("button", { name: "Prepare customer document", exact: true })
+      .click();
+    await expect(
+      page.getByLabel("Final customer scope", { exact: true }),
+    ).toHaveValue(baseRequest.requestedChanges[0].description);
+    await expect(
+      page.getByLabel("Final change amount", { exact: true }),
+    ).toHaveValue(amount!.replace(/^[+-]/, ""));
+    await expect(
+      page
+        .getByRole("group", {
+          name: "Final change amount direction",
+          exact: true,
+        })
+        .getByRole("button", {
+          name: amount!.startsWith("-") ? "Credit" : "Increase",
+          exact: true,
+        }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByLabel("Estimate line number 1", { exact: true }),
+    ).toHaveValue("12");
+    await expect(
+      page.getByLabel("Estimate line number 2", { exact: true }),
+    ).toHaveValue("34");
+    await expect(
+      page
+        .getByRole("group", { name: "Action for estimate line 2", exact: true })
+        .getByRole("button", { name: "Remove", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByLabel("Contractor representative", { exact: true }),
+    ).toHaveValue("Jamie Estimator");
+    await expect(page.getByLabel("Customer name", { exact: true })).toHaveValue(
+      baseRequest.job.customer,
+    );
+    await page
+      .getByRole("button", { name: "Save changes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: "Prepare customer document",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(api.requests.get("r1").finalChangeOrder.amount).toBe(amount);
+    expect(api.requests.get("r1").status).toBe("in_review");
+    const downloadButton = page.getByRole("button", {
+      name: "Download customer PDF",
+      exact: true,
+    });
+    if (amount) await expect(downloadButton).toBeEnabled();
+    else await expect(downloadButton).toBeDisabled();
+    if (label === "credit") {
+      const pending = page.waitForEvent("download");
+      await page
+        .getByRole("button", { name: "Download customer PDF", exact: true })
+        .click();
+      const downloaded = await pending;
+      const pdf = await getDocument({
+        data: new Uint8Array(await readFile((await downloaded.path())!)),
+        disableFontFace: true,
+      }).promise;
+      let text = "";
+      for (let i = 1; i <= pdf.numPages; i++)
+        text += (await (await pdf.getPage(i)).getTextContent()).items
+          .map((item: any) => item.str)
+          .join(" ");
+      expect(text).toContain("-$250.10");
+      expect(text).toContain("$166,795.71");
+      expect(text).toContain(baseRequest.requestedChanges[0].description);
+      await pdf.destroy();
+    }
+  });
+}
 
 test("the review page previews a photo and downloads an attachment", async ({
   page,

@@ -29,7 +29,7 @@ export interface ChangeRequest {
   customerCredits?: boolean;
   /** Signed estimate line references, e.g. +12, -34; kept as submitted text. */
   lineNumbers?: string;
-  /** Optional submitter estimate; never automatically used as the final price. */
+  /** Optional submitter amount, prefilled for estimator review and editing. */
   knownChangeAmount?: string;
   finalChangeOrder?: { scope: string; amount: string };
   id: string;

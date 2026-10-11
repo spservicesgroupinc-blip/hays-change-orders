@@ -13,9 +13,11 @@ export default function RequestQuestions({
   lineNumbers = "",
   knownChangeAmount = "",
   disabled = false,
+  showKnownAmount = true,
   onChange,
 }: Answers & {
   disabled?: boolean;
+  showKnownAmount?: boolean;
   onChange: (answers: Answers) => void;
 }) {
   const answers = {
@@ -75,14 +77,16 @@ export default function RequestQuestions({
           value={lineNumbers}
           onChange={(value) => onChange({ ...answers, lineNumbers: value })}
         />
-        <SignedAmountInput
-          label="Known change amount"
-          optional
-          value={knownChangeAmount}
-          onChange={(value) =>
-            onChange({ ...answers, knownChangeAmount: value })
-          }
-        />
+        {showKnownAmount ? (
+          <SignedAmountInput
+            label="Known change amount"
+            optional
+            value={knownChangeAmount}
+            onChange={(value) =>
+              onChange({ ...answers, knownChangeAmount: value })
+            }
+          />
+        ) : null}
       </div>
     </fieldset>
   );

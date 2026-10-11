@@ -22,6 +22,7 @@ import {
   pricingInputError,
   finalContractTotal,
   signedAmountLabel,
+  customerDocumentDraft,
 } from "../services/changeOrder";
 import "./RequestEditor.css";
 import RequestQuestions from "./RequestQuestions";
@@ -72,7 +73,11 @@ export default function RequestEditor({
   onLeaveGuard: (guard: (() => boolean) | null) => void;
   documentMode?: boolean;
 }) {
-  const [draft, setDraft] = useState(() => structuredClone(request));
+  const [initialDraft] = useState(() =>
+    structuredClone(documentMode ? customerDocumentDraft(request) : request),
+  );
+  const [draft, setDraft] = useState(initialDraft);
+  const documentInitialized = useRef(documentMode);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -91,7 +96,7 @@ export default function RequestEditor({
   );
   const heading = useRef<HTMLHeadingElement>(null);
   const dirty =
-    files.length > 0 || JSON.stringify(draft) !== JSON.stringify(request);
+    files.length > 0 || JSON.stringify(draft) !== JSON.stringify(initialDraft);
   const leave = () =>
     !saving.current &&
     (!dirty || window.confirm("Discard unsaved changes to this request?"));
@@ -267,8 +272,9 @@ export default function RequestEditor({
         {documentMode ? "Prepare customer document" : "Edit request"}
       </h2>
       <p>
-        Save your corrections without changing the request’s status or assigned
-        estimator.
+        {documentMode
+          ? "Submitted details are already filled in. Review or edit them, then save to generate the customer PDF."
+          : "Save your corrections without changing the request’s status or assigned estimator."}
       </p>
       {error ? (
         <div className="editor-error" role="alert">
@@ -295,6 +301,7 @@ export default function RequestEditor({
           customerCredits={draft.customerCredits}
           lineNumbers={draft.lineNumbers}
           knownChangeAmount={draft.knownChangeAmount}
+          showKnownAmount={!documentMode}
           onChange={(answers) =>
             setDraft((previous) => ({ ...previous, ...answers }))
           }
@@ -320,7 +327,16 @@ export default function RequestEditor({
             </label>
           ))}
         </div>
-        <details className="editor-document" open={documentMode || undefined}>
+        <details
+          className="editor-document"
+          open={documentMode || undefined}
+          onToggle={(event) => {
+            if (event.currentTarget.open && !documentInitialized.current) {
+              documentInitialized.current = true;
+              setDraft((previous) => customerDocumentDraft(previous));
+            }
+          }}
+        >
           <summary>Customer change order</summary>
           <p>
             Review the customer scope and final price, then save before
@@ -372,42 +388,6 @@ export default function RequestEditor({
               }
             />
           </label>
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              if (
-                draft.finalChangeOrder?.scope.trim() &&
-                !window.confirm(
-                  "Replace the final customer scope with the submitted descriptions?",
-                )
-              )
-                return;
-              setDraft((previous) => ({
-                ...previous,
-                finalChangeOrder: {
-                  amount: previous.finalChangeOrder?.amount ?? "",
-                  scope: previous.requestedChanges
-                    .map((change) =>
-                      [
-                        change.room,
-                        change.description,
-                        change.measurements &&
-                          `Measurements: ${change.measurements}`,
-                        change.materials && `Materials: ${change.materials}`,
-                        change.scheduleImpact &&
-                          `Schedule: ${change.scheduleImpact}`,
-                      ]
-                        .filter(Boolean)
-                        .join("\n"),
-                    )
-                    .join("\n\n"),
-                },
-              }));
-            }}
-          >
-            Use submitted descriptions
-          </button>
           <SignedAmountInput
             label="Final change amount"
             value={draft.finalChangeOrder?.amount ?? ""}
@@ -426,52 +406,78 @@ export default function RequestEditor({
             <strong>New contract total: {finalContractTotal(draft)}</strong>
           </p>
         </details>
-        <h3>Submitted text</h3>
-        {draft.requestedChanges.map((change, index) => (
-          <div className="editor-note" key={change.id}>
-            <strong>
-              Change {index + 1}
-              {change.room ? ` · ${change.room}` : ""}
-            </strong>
-            {(["description", "reason"] as const).map((key) => (
-              <label className="field" key={key}>
-                <span>
-                  {key === "description" ? "Description" : "Reason"} {index + 1}
-                </span>
-                <textarea
-                  aria-label={`${key === "description" ? "Description" : "Reason"} ${index + 1}`}
-                  value={change[key]}
-                  rows={key === "description" ? 4 : 2}
-                  onChange={(event) =>
-                    setDraft((previous) => ({
-                      ...previous,
-                      requestedChanges: previous.requestedChanges.map((item) =>
-                        item.id === change.id
-                          ? { ...item, [key]: event.target.value }
-                          : item,
-                      ),
-                    }))
-                  }
-                />
-              </label>
+        {!documentMode ? (
+          <>
+            <h3>Submitted text</h3>
+            {draft.requestedChanges.map((change, index) => (
+              <div className="editor-note" key={change.id}>
+                <strong>
+                  Change {index + 1}
+                  {change.room ? ` · ${change.room}` : ""}
+                </strong>
+                {(["description", "reason"] as const).map((key) => (
+                  <label className="field" key={key}>
+                    <span>
+                      {key === "description" ? "Description" : "Reason"}{" "}
+                      {index + 1}
+                    </span>
+                    <textarea
+                      aria-label={`${key === "description" ? "Description" : "Reason"} ${index + 1}`}
+                      value={change[key]}
+                      rows={key === "description" ? 4 : 2}
+                      onChange={(event) =>
+                        setDraft((previous) => ({
+                          ...previous,
+                          requestedChanges: previous.requestedChanges.map(
+                            (item) =>
+                              item.id === change.id
+                                ? { ...item, [key]: event.target.value }
+                                : item,
+                          ),
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
-        <button
-          type="button"
-          className="button"
-          onClick={() =>
-            setDraft((previous) => ({
-              ...previous,
-              requestedChanges: [
-                ...previous.requestedChanges,
-                createRequestedChange(),
-              ],
-            }))
-          }
-        >
-          Add note
-        </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                setDraft((previous) => ({
+                  ...previous,
+                  requestedChanges: [
+                    ...previous.requestedChanges,
+                    createRequestedChange(),
+                  ],
+                }))
+              }
+            >
+              Add note
+            </button>
+          </>
+        ) : (
+          <details className="editor-source">
+            <summary>View submitted text</summary>
+            {request.requestedChanges.map((change, index) => (
+              <article key={change.id}>
+                <strong>
+                  Change {index + 1}
+                  {change.room ? ` · ${change.room}` : ""}
+                </strong>
+                <p style={{ whiteSpace: "pre-wrap" }}>
+                  {change.description || "No description provided."}
+                </p>
+                {change.reason && (
+                  <p style={{ whiteSpace: "pre-wrap" }}>
+                    Reason: {change.reason}
+                  </p>
+                )}
+              </article>
+            ))}
+          </details>
+        )}
         <h3>Photos &amp; files</h3>
         <ul className="editor-files">
           {draft.attachments.map((file) => (

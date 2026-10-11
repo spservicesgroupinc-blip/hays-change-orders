@@ -28,6 +28,17 @@
 .editor-document > * + * {
   margin-top: 14px;
 }
+.editor-source summary {
+  color: #475467;
+  cursor: pointer;
+  font-weight: 600;
+}
+.editor-source article {
+  margin-top: 12px;
+}
+.editor-source article p {
+  margin-top: 6px;
+}
 .editor-note {
   display: flex;
   flex-direction: column;
