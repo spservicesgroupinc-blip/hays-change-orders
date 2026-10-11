@@ -21,12 +21,11 @@ import { moneyCents } from "../services/contract";
 import {
   pricingInputError,
   finalContractTotal,
-  signedAmountLabel,
   customerDocumentDraft,
 } from "../services/changeOrder";
 import "./RequestEditor.css";
 import RequestQuestions from "./RequestQuestions";
-import { SignedAmountInput } from "./SignedInputs";
+import { SignedAmountInput, LineChangesInput } from "./SignedInputs";
 
 type PendingFile = {
   id: string;
@@ -77,7 +76,6 @@ export default function RequestEditor({
     structuredClone(documentMode ? customerDocumentDraft(request) : request),
   );
   const [draft, setDraft] = useState(initialDraft);
-  const documentInitialized = useRef(documentMode);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -269,12 +267,12 @@ export default function RequestEditor({
       }}
     >
       <h2 ref={heading} tabIndex={-1}>
-        {documentMode ? "Prepare customer document" : "Edit request"}
+        {documentMode ? "Finalize customer document" : "Edit request"}
       </h2>
       <p>
         {documentMode
-          ? "Submitted details are already filled in. Review or edit them, then save to generate the customer PDF."
-          : "Save your corrections without changing the request’s status or assigned estimator."}
+          ? "Review the customer scope and final price, then save to generate the customer PDF."
+          : "Correct the request’s details, submitted text, and attachments without changing its status or assigned estimator."}
       </p>
       {error ? (
         <div className="editor-error" role="alert">
@@ -296,16 +294,15 @@ export default function RequestEditor({
         disabled={Boolean(progress) || retrySave}
         className="editor-fields"
       >
-        <RequestQuestions
-          requestType={draft.requestType}
-          customerCredits={draft.customerCredits}
-          lineNumbers={draft.lineNumbers}
-          knownChangeAmount={draft.knownChangeAmount}
-          showKnownAmount={!documentMode}
-          onChange={(answers) =>
-            setDraft((previous) => ({ ...previous, ...answers }))
-          }
-        />
+        {!documentMode ? (
+          <RequestQuestions
+            requestType={draft.requestType}
+            customerCredits={draft.customerCredits}
+            onChange={(answers) =>
+              setDraft((previous) => ({ ...previous, ...answers }))
+            }
+          />
+        ) : null}
         <div className="editor-job-grid">
           {JOB_FIELDS.map(([key, label]) => (
             <label className="field" key={key}>
@@ -327,17 +324,9 @@ export default function RequestEditor({
             </label>
           ))}
         </div>
-        <details
-          className="editor-document"
-          open={documentMode || undefined}
-          onToggle={(event) => {
-            if (event.currentTarget.open && !documentInitialized.current) {
-              documentInitialized.current = true;
-              setDraft((previous) => customerDocumentDraft(previous));
-            }
-          }}
-        >
-          <summary>Customer change order</summary>
+        {documentMode ? (
+          <details className="editor-document" open>
+            <summary>Customer change order</summary>
           <p>
             Review the customer scope and final price, then save before
             previewing or downloading the document.
@@ -355,6 +344,12 @@ export default function RequestEditor({
               </label>
             ))}
           </div>
+          <LineChangesInput
+            value={draft.lineNumbers ?? ""}
+            onChange={(value) =>
+              setDraft((previous) => ({ ...previous, lineNumbers: value }))
+            }
+          />
           <label className="request-checkbox">
             <input
               type="checkbox"
@@ -400,12 +395,13 @@ export default function RequestEditor({
                 },
               }))
             }
-            hint={`Enter 0.00 for no price change. Submitter’s known amount: ${signedAmountLabel(draft.knownChangeAmount)}.`}
+            hint="Enter 0.00 for no price change."
           />
           <p>
             <strong>New contract total: {finalContractTotal(draft)}</strong>
           </p>
-        </details>
+          </details>
+        ) : null}
         {!documentMode ? (
           <>
             <h3>Submitted text</h3>
@@ -478,61 +474,65 @@ export default function RequestEditor({
             ))}
           </details>
         )}
-        <h3>Photos &amp; files</h3>
-        <ul className="editor-files">
-          {draft.attachments.map((file) => (
-            <li key={file.id}>
-              <span>{file.name}</span>
-              <button
-                type="button"
-                className="button small"
-                aria-label={`Remove ${file.name}`}
-                onClick={() =>
-                  setDraft((previous) => ({
-                    ...previous,
-                    attachments: previous.attachments.filter(
-                      (item) => item.id !== file.id,
-                    ),
-                  }))
-                }
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-          {files.map((entry) => (
-            <li key={entry.id}>
-              <span>
-                {entry.file.name} <small>(new)</small>
-              </span>
-              <button
-                type="button"
-                className="button small"
-                aria-label={`Remove new ${entry.file.name}`}
-                onClick={() =>
-                  setFiles((previous) =>
-                    previous.filter((item) => item.id !== entry.id),
-                  )
-                }
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-        <label className="field">
-          <span>Add photos or PDFs</span>
-          <input
-            type="file"
-            aria-label="Add photos or PDFs"
-            multiple
-            accept="image/*,.heic,.heif,application/pdf,.pdf"
-            onChange={(event) => {
-              addFiles(event.target.files);
-              event.target.value = "";
-            }}
-          />
-        </label>
+        {!documentMode ? (
+          <>
+            <h3>Photos &amp; files</h3>
+            <ul className="editor-files">
+              {draft.attachments.map((file) => (
+                <li key={file.id}>
+                  <span>{file.name}</span>
+                  <button
+                    type="button"
+                    className="button small"
+                    aria-label={`Remove ${file.name}`}
+                    onClick={() =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        attachments: previous.attachments.filter(
+                          (item) => item.id !== file.id,
+                        ),
+                      }))
+                    }
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+              {files.map((entry) => (
+                <li key={entry.id}>
+                  <span>
+                    {entry.file.name} <small>(new)</small>
+                  </span>
+                  <button
+                    type="button"
+                    className="button small"
+                    aria-label={`Remove new ${entry.file.name}`}
+                    onClick={() =>
+                      setFiles((previous) =>
+                        previous.filter((item) => item.id !== entry.id),
+                      )
+                    }
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <label className="field">
+              <span>Add photos or PDFs</span>
+              <input
+                type="file"
+                aria-label="Add photos or PDFs"
+                multiple
+                accept="image/*,.heic,.heif,application/pdf,.pdf"
+                onChange={(event) => {
+                  addFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </>
+        ) : null}
       </fieldset>
       <div className="button-row">
         <button

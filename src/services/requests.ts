@@ -14,7 +14,7 @@ export function createRequest(): ChangeRequest {
     revision: 0,
     createdAt: now,
     updatedAt: now,
-    status: "draft",
+    status: "submitted",
     estimatorName: "",
     submittedAt: null,
     informationQuestion: "",

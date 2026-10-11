@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist`; `npm run preview` serves that build on the same port. Drafts are stored in Google Sheets and source PDFs in Google Drive through an Apps Script backend — see `docs/google-sheets-setup.md` for the one-time setup.
+Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist`; `npm run preview` serves that build on the same port. Requests are stored in Google Sheets and source PDFs in Google Drive through an Apps Script backend — see `docs/google-sheets-setup.md` for the one-time setup.
 
 ## Use
 
@@ -22,14 +22,14 @@ have the same button on the review screen; save corrections before copying.
 If clipboard access is blocked, the app provides selectable note text.
 Older requests show unanswered questions as **Not provided** until edited.
 
-Use **Add / Remove** buttons beside each estimate line number, and **Add
-another line** for additional references. Choose **Increase / Credit** beside
-**Known change amount**, then enter the dollar amount without typing a sign.
-Leave it blank when unknown. The estimator's final amount uses the same buttons.
+Estimators set the estimate line references and the final change amount in
+**Finalize customer document**, choosing **Add / Remove** per line and
+**Increase / Credit** for the signed amount. The project manager's quick
+request does not ask for a price — pricing belongs to the estimator.
 Signed answers appear in Dash notes and PDFs.
 
-1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. Drafts autosave as you type.
-2. **Estimators** open requests from the shared queue, review the submitted text, and preview or download each attached photo or PDF. Use **Download summary PDF** for the internal job summary. **Prepare customer document** automatically fills the submitted scope, line references, signed change amount, customer/job details, and assigned estimator as contractor representative when blank. Review and edit as needed; saved estimator scope and pricing take precedence over the submitted values. Unknown amounts stay blank. Check the change-order number/date, added days and insurance details, then save and **Preview customer PDF** or **Download customer PDF**. The Hays + Sons letterhead document includes the agreed scope, original/prior/change amounts, new contract total and owner/contractor signature lines. It excludes internal notes and attachment filenames. Mark the request complete when finished; the saved customer PDF remains downloadable.
+1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. The request lands in the shared queue immediately — there is no separate draft step.
+2. **Estimators** open requests from the shared queue, review the submitted text, and preview or download each attached photo or PDF. Use **Download summary PDF** for the internal job summary. **Finalize customer document** automatically fills the submitted scope, line references, customer/job details, and assigned estimator as contractor representative when blank. Review and edit as needed; saved estimator scope and pricing take precedence over the submitted values. Unknown amounts stay blank. Check the change-order number/date, added days and insurance details, then save and **Preview customer PDF** or **Download customer PDF**. The Hays + Sons letterhead document includes the agreed scope, original/prior/change amounts, new contract total and owner/contractor signature lines. It excludes internal notes and attachment filenames. Mark the request complete when finished; the saved customer PDF remains downloadable.
 3. **Admins** import each customer's contract amount with the job list: the Dash JobSummaryReport CSV (or an export with a contract-amount column) becomes the searchable job directory on the Jobs page. Picking a job in the request form fills in the job number, customer, property address, responsible project manager, and the customer's original contract amount, so nobody retypes the contract amount on the change order. Estimators can still override any of it.
 4. Use **Edit request** while a request is queued, in review, or awaiting information. Correct customer/job details, original contract amount, previous authorized changes, and descriptions/reasons; add photos/PDFs or remove attachments. **Save changes** preserves status, assignment, and the submission date. **Cancel** discards local edits after a warning. Failed saves retain edits; use **Retry save** for an uncertain response, or **Reload latest request** when another window saved newer work.
 5. The summary PDF shows **Total contract price = original contract + previous authorized changes**, excluding the unpriced request. Blank previous changes count as zero. Missing or invalid contract amounts print as **Not provided** or **Unavailable**, never an invented $0.00 total. Downloads use saved data, so save edits first. Completed requests remain read-only, with summary and individual attachment downloads available.
@@ -38,7 +38,7 @@ Legacy change orders from the previous four-step editor remain in a separate sec
 
 Printed RCV remains the original baseline. A revision adds the change in rounded quantity × unit price and the changes in estimator-reviewed tax/O&P dollars to that baseline. A removal credits full original RCV. Money uses decimal-string arithmetic with integer cents and half-away-from-zero rounding. Depreciation, ACV, and recap amounts do not become line items.
 
-Drafts and requests sync automatically to Google Sheets, and uploaded PDFs are stored in Google Drive, so the team sees the same queue across devices. Each save carries an expected revision and retry identifier, so a stale tab cannot overwrite a newer edit. Storage failures are shown and prevent leaving unsaved work through the app. Keep downloaded copies of completed documents.
+Requests sync automatically to Google Sheets, and uploaded PDFs are stored in Google Drive, so the team sees the same queue across devices. Each save carries an expected revision and retry identifier, so a stale tab cannot overwrite a newer edit. Storage failures are shown and prevent leaving unsaved work through the app. Keep downloaded copies of completed documents.
 
 The parser supports positioned Final Draft tables, wrapped descriptions, repeated headers, and explicit RCV columns. It also reads right-aligned RESET / REMOVE / REPLACE / TAX / O&P / TOTAL reports, combining the printed per-unit prices into the editable unit price while keeping the printed TOTAL as the original RCV. Source price components stay available during review. Existing negative credit lines are preserved and can be revised or removed. Room sketches, trade headings, page footers, recap totals, depreciation, and ACV do not become priced work. PDFs vary; review extracted fields against the source before generation. Scanned PDFs and unsupported reports use manual entry. The app does not infer pricing-list rates, tax applicability, or O&P rules. A later change order must use the appropriate current estimate baseline; previously exported packets do not automatically update the baseline or previous authorized changes.
 

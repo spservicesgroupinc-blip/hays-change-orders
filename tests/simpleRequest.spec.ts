@@ -344,7 +344,7 @@ test("a project manager sends a text-only quick request", async ({ page }) => {
   );
 
   expect(api.saved).toHaveLength(1);
-  expect(api.saved[0].status).toBe("draft");
+  expect(api.saved[0].status).toBe("submitted");
   expect(api.saved[0].job).toMatchObject({
     customer: "York Ridge Apartments",
     jobNumber: "F-26-0366-P",
@@ -359,17 +359,11 @@ test("a project manager sends a text-only quick request", async ({ page }) => {
   expect(api.saved[0].requestedChanges[0].description).toBe(
     "Added insulation to the open kitchen wall",
   );
-  // A text-only request saves once and submits on the revision it just got.
+  // A text-only request saves once, already in the queue.
   expect(api.actions.filter((action) => action !== "bootstrap")).toEqual([
     "saveRequest",
-    "transitionRequest",
   ]);
-  expect(api.transitions).toHaveLength(1);
-  expect(api.transitions[0]).toMatchObject({
-    status: "submitted",
-    id: api.saved[0].id,
-    expectedRevision: 1,
-  });
+  expect(api.transitions).toHaveLength(0);
 });
 
 test("checkbox answers are copied for Dash before submission and saved with the request", async ({
@@ -405,48 +399,12 @@ test("checkbox answers are copied for Dash before submission and saved with the 
   await page
     .getByLabel("What changed?", { exact: true })
     .fill("Credit for unused flooring.\nKeep this text.");
-  await page.getByLabel("Estimate line number 1", { exact: true }).fill("12");
-  await page
-    .getByRole("button", { name: "Add another line", exact: true })
-    .click();
-  await page.getByLabel("Estimate line number 2", { exact: true }).fill("34");
-  await page
-    .getByRole("group", { name: "Action for estimate line 2", exact: true })
-    .getByRole("button", { name: "Remove", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Add another line", exact: true })
-    .click();
-  await page.getByLabel("Estimate line number 3", { exact: true }).fill("56");
-  const moneyDirection = page.getByRole("group", {
-    name: "Known change amount direction",
-    exact: true,
-  });
-  await moneyDirection
-    .getByRole("button", { name: "Credit", exact: true })
-    .click();
+  // The PM form asks no pricing questions: no estimate lines, no known amount.
   await expect(
-    moneyDirection.getByRole("button", { name: "Credit", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.getByLabel("Known change amount", { exact: true }).fill("250.19");
-  await moneyDirection
-    .getByRole("button", { name: "Increase", exact: true })
-    .click();
+    page.getByLabel("Estimate line number 1", { exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByLabel("Known change amount", { exact: true }),
-  ).toHaveValue("250.19");
-  await moneyDirection
-    .getByRole("button", { name: "Credit", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Add another line", exact: true })
-    .click();
-  await page.getByLabel("Estimate line number 4", { exact: true }).fill("99");
-  await page
-    .getByRole("button", { name: "Delete estimate line 4", exact: true })
-    .click();
-  await expect(
-    page.getByLabel("Estimate line number 4", { exact: true }),
   ).toHaveCount(0);
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: 1400 });
@@ -456,9 +414,6 @@ test("checkbox answers are copied for Dash before submission and saved with the 
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    await page
-      .locator(".request-pricing")
-      .screenshot({ path: `tmp/request-summary/sign-controls-${width}.png` });
   }
   await page
     .getByRole("button", { name: "Copy Dash note", exact: true })
@@ -472,8 +427,6 @@ test("checkbox answers are copied for Dash before submission and saved with the 
     "York Ridge Apartments",
     "F-26-0366-P",
     "Credit for unused flooring.\nKeep this text.",
-    "Estimate line numbers: +12, -34, +56",
-    "Known change amount: -$250.19",
   ])
     expect(copied[0]).toContain(expected);
   await page
@@ -482,8 +435,7 @@ test("checkbox answers are copied for Dash before submission and saved with the 
   await expect(page.getByText(/Sent to estimating/)).toBeVisible();
   expect(api.saved[0].requestType).toBe("insurance_supplement");
   expect(api.saved[0].customerCredits).toBe(true);
-  expect(api.saved[0].lineNumbers).toBe("+12, -34, +56");
-  expect(api.saved[0].knownChangeAmount).toBe("-250.19");
+  expect(api.saved[0].lineNumbers).toBeUndefined();
 });
 
 test("a photo is marked up before it is sent, with an optional PDF", async ({
@@ -539,13 +491,12 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
   expect(api.uploads[0].bytes).toBeGreaterThan(1000);
   expect(api.uploads[1].name).toBe("no-text.pdf");
   // The upload endpoint stores files in Drive but never edits the request, so
-  // the returned rows must be saved onto the request before the submit lands.
+  // the returned rows must be saved onto the request before it lands in the queue.
   expect(api.actions.filter((action) => action !== "bootstrap")).toEqual([
     "saveRequest",
     "uploadAttachment",
     "uploadAttachment",
     "saveRequest",
-    "transitionRequest",
   ]);
   expect(api.saved).toHaveLength(2);
   expect(api.saved[0].attachments).toHaveLength(0);
@@ -553,12 +504,7 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
     "photo",
     "document",
   ]);
-  expect(api.transitions).toHaveLength(1);
-  expect(api.transitions[0]).toMatchObject({
-    status: "submitted",
-    id: api.saved[1].id,
-    expectedRevision: 2,
-  });
+  expect(api.transitions).toHaveLength(0);
 });
 
 test("the annotator keeps a labelled Save control on a phone", async ({
@@ -637,7 +583,7 @@ test("a photo the endpoint cannot accept (HEIC pick) is converted before upload"
   expect(api.uploads[0].name).toBe("IMG_1234.jpg");
   expect(api.uploads[0].bytes).toBeGreaterThan(1000);
   expect(api.saved[1].attachments[0].mimeType).toBe("image/jpeg");
-  expect(api.transitions).toHaveLength(1);
+  expect(api.transitions).toHaveLength(0);
 });
 
 test("the customer field falls back to a typed name when the directory is empty", async ({
@@ -680,12 +626,11 @@ test("a failed upload is retried on the same request, never a duplicate", async 
   await page.getByRole("button", { name: "Send to estimating" }).click();
   await expect(page.getByText(/Sent to estimating/)).toBeVisible();
 
-  // The retry saved the same request again instead of creating a second one,
-  // and the transition still happened exactly once.
+  // The retry saved the same request again instead of creating a second one.
   expect(api.saved).toHaveLength(3);
   expect(new Set(api.saved.map((request) => request.id)).size).toBe(1);
   expect(api.saved[2].attachments).toHaveLength(1);
-  expect(api.transitions).toHaveLength(1);
+  expect(api.transitions).toHaveLength(0);
   // The failed attempt's upload identity is reused, so the endpoint returns the
   // file it already holds instead of storing a second copy of the photo.
   expect(api.uploads.map((upload) => upload.failed)).toEqual([true, false]);

@@ -49,7 +49,6 @@ export function formatDashNote(
   field("Previous authorized changes", amounts.previous);
   field("Total contract price", amounts.total);
   field("Estimate line numbers", request.lineNumbers);
-  field("Known change amount", signedAmountLabel(request.knownChangeAmount));
   for (const [label, value] of [
     ["Change-order date", job.date],
     ["Added days", job.addedDays],

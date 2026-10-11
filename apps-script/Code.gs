@@ -281,9 +281,8 @@ function shapeCheck_(request) {
   if (!request || request.schemaVersion !== 2 || !request.id || typeof request.id !== "string" || request.id.length > 100 || !request.job) problem_("VALIDATION", "A valid version-2 request is required.");
   if (request.requestType !== undefined && ["change_order", "insurance_supplement"].indexOf(request.requestType) < 0) problem_("VALIDATION", "Choose a valid request type.");
   if (request.customerCredits !== undefined && typeof request.customerCredits !== "boolean") problem_("VALIDATION", "Customer credits must be a checkbox answer.");
-  ["lineNumbers", "knownChangeAmount"].forEach(function(key) { if (request[key] !== undefined && typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
+  ["lineNumbers"].forEach(function(key) { if (request[key] !== undefined && typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
   if (request.lineNumbers && request.lineNumbers.trim() && !/^[+-][1-9]\d*(?:[\s,]+[+-][1-9]\d*)*$/.test(request.lineNumbers.trim())) problem_("VALIDATION", "Enter signed line numbers, such as +12, -34.");
-  if (request.knownChangeAmount && request.knownChangeAmount.trim() && !/^[+-]?\d+(?:\.\d{1,2})?$/.test(request.knownChangeAmount.trim())) problem_("VALIDATION", "Enter a valid known change dollar amount.");
   if (request.finalChangeOrder !== undefined) {
     const final = request.finalChangeOrder;
     if (!final || typeof final !== "object" || typeof final.scope !== "string" || typeof final.amount !== "string") problem_("VALIDATION", "Final scope and amount must be text.");
@@ -322,11 +321,11 @@ function saveRequest_(body) {
     if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request });
     revisionCheck_(row, body.expectedRevision);
     if (!row) {
-      if (request.status !== "draft" || request.estimatorName || request.attachments.length) problem_("VALIDATION", "New requests must begin as empty-attachment drafts.");
-      request.submittedAt = null; request.informationQuestion = "";
+      if (request.status !== "submitted" || request.estimatorName || request.attachments.length) problem_("VALIDATION", "New requests must begin as submitted without attachments.");
+      request.submittedAt = new Date().toISOString(); request.informationQuestion = "";
     } else {
       const previous = snapshot.request;
-      if (["draft", "submitted", "in_review", "needs_information"].indexOf(previous.status) < 0) problem_("STATE", "Completed requests cannot be edited.");
+      if (["submitted", "in_review", "needs_information"].indexOf(previous.status) < 0) problem_("STATE", "Completed requests cannot be edited.");
       if (request.status !== previous.status || request.estimatorName !== previous.estimatorName) problem_("STATE", "Use the claim or status action to change review state.");
       request.submittedAt = previous.submittedAt; request.informationQuestion = previous.informationQuestion;
       request.attachments = request.attachments.map(function(attachment) { return attachmentFile_(row, attachment).attachment; });
@@ -353,7 +352,7 @@ function transitionRequest_(body) {
     const row = requestRow_(body.id); if (!row) problem_("NOT_FOUND", "Request not found.");
     const snapshot = readSnapshot_(row); if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request });
     revisionCheck_(row, body.expectedRevision); const request = snapshot.request; const target = body.status; let errors = [];
-    if (target === "submitted" && ["draft", "needs_information"].indexOf(request.status) >= 0) {
+    if (target === "submitted" && ["needs_information"].indexOf(request.status) >= 0) {
       errors = submissionErrors_(request); request.submittedAt = new Date().toISOString(); request.informationQuestion = "";
     } else if (target === "needs_information" && request.status === "in_review") {
       if (!String(body.question || "").trim()) errors.push("Describe the information the project manager must provide."); request.informationQuestion = String(body.question || "").trim();
@@ -386,7 +385,7 @@ function uploadAttachment_(body) {
       return json_({ ok: true, attachment: metadata.attachment });
     }
     const request = readSnapshot_(row).request;
-    if (["draft", "submitted", "in_review", "needs_information"].indexOf(request.status) < 0) problem_("STATE", "Completed requests cannot receive attachments.");
+    if (["submitted", "in_review", "needs_information"].indexOf(request.status) < 0) problem_("STATE", "Completed requests cannot receive attachments.");
     const name = String(info.name || "attachment").split(/[\\/]/).pop().slice(0, 200);
     const file = folder.createFile(Utilities.newBlob(bytes, info.mimeType, filename));
     const attachment = { id: String(body.attachmentId), kind: info.kind, name: name, mimeType: info.mimeType, size: bytes.length, driveFileId: file.getId() };

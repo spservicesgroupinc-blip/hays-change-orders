@@ -1,12 +1,10 @@
 import { CheckCircle2, Download, Eye, FileText, ImageIcon } from "lucide-react";
 import type { ChangeRequest, RequestAttachment } from "../types";
 import { contractAmounts } from "../services/contract";
-import { signedAmountLabel } from "../services/changeOrder";
 import { requestTypeLabel, customerCreditsLabel } from "../services/dashNote";
 import "./IntakeReceipt.css";
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
   submitted: "In queue",
   in_review: "In review",
   needs_information: "Needs info",
@@ -105,10 +103,6 @@ export default function IntakeReceipt({
             <dd style={{ whiteSpace: "pre-wrap" }}>
               {request.lineNumbers || "Not provided"}
             </dd>
-          </div>
-          <div>
-            <dt>Known change amount</dt>
-            <dd>{signedAmountLabel(request.knownChangeAmount)}</dd>
           </div>
         </dl>
       </section>

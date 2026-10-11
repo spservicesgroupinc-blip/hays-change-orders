@@ -60,7 +60,6 @@ import summaryFontUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
 import { downloadBlob } from "./services/download";
 
 const STATUS_LABELS: Record<RequestStatus, string> = {
-  draft: "Draft",
   submitted: "In queue",
   in_review: "In review",
   needs_information: "Needs info",
@@ -543,7 +542,6 @@ export default function App() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<RequestStatus, number> = {
-      draft: 0,
       submitted: 0,
       in_review: 0,
       needs_information: 0,

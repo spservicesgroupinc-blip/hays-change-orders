@@ -10,7 +10,6 @@ import { createRequest, createRequestedChange } from "../services/requests";
 import {
   blobToBase64,
   saveRequest,
-  transitionRequest,
   uploadAttachment,
 } from "../services/storage";
 import {
@@ -21,7 +20,6 @@ import PhotoAnnotator from "./PhotoAnnotator";
 import RequestQuestions from "./RequestQuestions";
 import CopyDashNote from "./CopyDashNote";
 import { formatDashNote } from "../services/dashNote";
-import { pricingInputError } from "../services/changeOrder";
 import "./SimpleRequest.css";
 
 export interface SimpleRequestProps {
@@ -110,7 +108,7 @@ function buildRequest(
   base: ChangeRequest | null,
   details: { job: JobEntry | null; customer: string; note: string } & Pick<
     ChangeRequest,
-    "requestType" | "customerCredits" | "lineNumbers" | "knownChangeAmount"
+    "requestType" | "customerCredits"
   >,
 ): ChangeRequest {
   const request = base ?? createRequest();
@@ -118,12 +116,10 @@ function buildRequest(
   return {
     ...request,
     updatedAt: new Date().toISOString(),
-    status: "draft",
+    status: "submitted",
     submittedAt: null,
     requestType: details.requestType,
     customerCredits: details.customerCredits,
-    lineNumbers: details.lineNumbers,
-    knownChangeAmount: details.knownChangeAmount,
     job: {
       ...request.job,
       customer: details.customer,
@@ -235,8 +231,6 @@ export default function SimpleRequest(
   const [requestType, setRequestType] =
     useState<ChangeRequest["requestType"]>();
   const [customerCredits, setCustomerCredits] = useState(false);
-  const [lineNumbers, setLineNumbers] = useState("");
-  const [knownChangeAmount, setKnownChangeAmount] = useState("");
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [pdf, setPdf] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -431,11 +425,6 @@ export default function SimpleRequest(
     setContentError(nextContentError);
     setSubmitError("");
     if (nextCustomerError || nextContentError) return;
-    const pricingError = pricingInputError({ lineNumbers, knownChangeAmount });
-    if (pricingError) {
-      setSubmitError(pricingError);
-      return;
-    }
     if (listening) stopListening();
     setBusy(true);
     setProgress("Saving the request…");
@@ -447,8 +436,6 @@ export default function SimpleRequest(
         note,
         requestType,
         customerCredits,
-        lineNumbers,
-        knownChangeAmount,
       });
       const saved = await saveRequest(request, prior?.revision ?? 0, newId());
       // Keep the saved request and its revision. A later failure retries against
@@ -518,14 +505,6 @@ export default function SimpleRequest(
         );
         savedAttempt.current = { request: current, revision: current.revision };
       }
-      setProgress("Submitting to estimating…");
-      await transitionRequest(
-        current.id,
-        current.revision,
-        "submitted",
-        "",
-        newId(),
-      );
       savedAttempt.current = null;
       onDone(
         `Sent to estimating: ${customer}${selectedJob?.jobNumber ? ` · job ${selectedJob.jobNumber}` : ""}.`,
@@ -671,14 +650,10 @@ export default function SimpleRequest(
           <RequestQuestions
             requestType={requestType}
             customerCredits={customerCredits}
-            lineNumbers={lineNumbers}
-            knownChangeAmount={knownChangeAmount}
             disabled={busy}
             onChange={(answers) => {
               setRequestType(answers.requestType);
               setCustomerCredits(answers.customerCredits ?? false);
-              setLineNumbers(answers.lineNumbers ?? "");
-              setKnownChangeAmount(answers.knownChangeAmount ?? "");
             }}
           />
         </section>
@@ -844,8 +819,6 @@ export default function SimpleRequest(
                 note,
                 requestType,
                 customerCredits,
-                lineNumbers,
-                knownChangeAmount,
               }),
               [
                 ...photos.map((photo) => photo.file.name),

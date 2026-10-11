@@ -11,7 +11,7 @@ import {
 import { formatDashNote } from "../src/services/dashNote";
 import { createRequestedChange } from "../src/services/requests";
 
-test("document preparation inherits signed prices, scope entries, and job information", () => {
+test("document preparation inherits scope entries and job information, with no submitted price", () => {
   const request = createRequest();
   request.estimatorName = "Jamie Estimator";
   request.job.originalContract = "1000.00";
@@ -32,25 +32,22 @@ test("document preparation inherits signed prices, scope entries, and job inform
       description: "Credit unused trim",
     },
   ];
-  for (const amount of ["+1250.19", "-250.10", "0.00", ""]) {
-    request.knownChangeAmount = amount;
-    const draft = customerDocumentDraft(request);
-    assert.equal(draft.finalChangeOrder!.amount, amount);
-    for (const text of [
-      "Change 1 - Kitchen (add)",
-      "Replace insulation",
-      "12 square feet",
-      "R-13",
-      "2 days",
-      "Change 2 - Bedroom (remove)",
-      "Credit unused trim",
-    ])
-      assert.ok(draft.finalChangeOrder!.scope.includes(text));
-    assert.equal(draft.lineNumbers, request.lineNumbers);
-    assert.equal(draft.job.branchContact, "Jamie Estimator");
-    assert.equal(draft.job.originalContract, "1000.00");
-    assert.equal(request.finalChangeOrder, undefined);
-  }
+  const draft = customerDocumentDraft(request);
+  assert.equal(draft.finalChangeOrder!.amount, "");
+  for (const text of [
+    "Change 1 - Kitchen (add)",
+    "Replace insulation",
+    "12 square feet",
+    "R-13",
+    "2 days",
+    "Change 2 - Bedroom (remove)",
+    "Credit unused trim",
+  ])
+    assert.ok(draft.finalChangeOrder!.scope.includes(text));
+  assert.equal(draft.lineNumbers, request.lineNumbers);
+  assert.equal(draft.job.branchContact, "Jamie Estimator");
+  assert.equal(draft.job.originalContract, "1000.00");
+  assert.equal(request.finalChangeOrder, undefined);
   request.requestedChanges = [
     {
       ...createRequestedChange(),
@@ -66,9 +63,8 @@ test("document preparation inherits signed prices, scope entries, and job inform
   );
 });
 
-test("preparation preserves estimator corrections and fills older incomplete document fields", () => {
+test("preparation preserves estimator corrections and does not invent a price", () => {
   const request = createRequest();
-  request.knownChangeAmount = "+999.00";
   request.requestedChanges = [
     { ...createRequestedChange(), description: "Submitted scope" },
   ];
@@ -83,7 +79,7 @@ test("preparation preserves estimator corrections and fills older incomplete doc
   request.finalChangeOrder = { scope: "Estimator revised scope", amount: "" };
   assert.deepEqual(customerDocumentDraft(request).finalChangeOrder, {
     scope: "Estimator revised scope",
-    amount: "+999.00",
+    amount: "",
   });
 });
 
@@ -103,14 +99,12 @@ test("signed changes preserve exact cents, credits, and explicit zero", () => {
     assert.equal(signedMoneyCents(value), null, value);
 });
 
-test("signed line references and known prices validate and copy without approving the price", () => {
+test("signed line references validate and copy without approving the price", () => {
   const request = createRequest();
   request.lineNumbers = "+12, -34\n+56";
-  request.knownChangeAmount = "-250.19";
   assert.equal(pricingInputError(request), "");
   const note = formatDashNote(request);
   assert.ok(note.includes("Estimate line numbers: +12, -34\n+56"));
-  assert.ok(note.includes("Known change amount: -$250.19"));
   assert.equal(finalContractTotal(request), "Unavailable");
   for (const value of ["12", "-0", "+1.5", "++12", "+12,"])
     assert.ok(pricingInputError({ lineNumbers: value }), value);

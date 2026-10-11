@@ -159,7 +159,7 @@ export default function RequestReview({
                 }}
               >
                 <Pencil size={16} />
-                Prepare customer document
+                Finalize customer document
               </button>
             ) : null}
             <button
@@ -221,7 +221,7 @@ export default function RequestReview({
             <h2>Estimator review</h2>
             <p>
               {request.estimatorName || "The estimator"} is working this
-              request. Prepare and save the customer document, preview the PDF,
+              request. Finalize and save the customer document, preview the PDF,
               then download it for customer approval and mark the request
               complete.
             </p>

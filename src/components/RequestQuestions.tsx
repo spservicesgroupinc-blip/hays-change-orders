@@ -1,30 +1,20 @@
 import type { ChangeRequest } from "../types";
-import { LineChangesInput, SignedAmountInput } from "./SignedInputs";
 import "./RequestQuestions.css";
 
-type Answers = Pick<
-  ChangeRequest,
-  "requestType" | "customerCredits" | "lineNumbers" | "knownChangeAmount"
->;
+type Answers = Pick<ChangeRequest, "requestType" | "customerCredits">;
 
 export default function RequestQuestions({
   requestType,
   customerCredits,
-  lineNumbers = "",
-  knownChangeAmount = "",
   disabled = false,
-  showKnownAmount = true,
   onChange,
 }: Answers & {
   disabled?: boolean;
-  showKnownAmount?: boolean;
   onChange: (answers: Answers) => void;
 }) {
   const answers = {
     requestType,
     customerCredits,
-    lineNumbers,
-    knownChangeAmount,
   };
   return (
     <fieldset className="request-questions" disabled={disabled}>
@@ -71,22 +61,6 @@ export default function RequestQuestions({
         <small>
           Leave unchecked if this does not include customer credits.
         </small>
-      </div>
-      <div className="request-pricing">
-        <LineChangesInput
-          value={lineNumbers}
-          onChange={(value) => onChange({ ...answers, lineNumbers: value })}
-        />
-        {showKnownAmount ? (
-          <SignedAmountInput
-            label="Known change amount"
-            optional
-            value={knownChangeAmount}
-            onChange={(value) =>
-              onChange({ ...answers, knownChangeAmount: value })
-            }
-          />
-        ) : null}
       </div>
     </fieldset>
   );

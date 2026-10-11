@@ -287,15 +287,7 @@ function save(
 }
 
 function submittedRequest(backend: ReturnType<typeof mockBackend>) {
-  const request = save(backend, intakeRequest()).request;
-  return backend.post({
-    action: "transitionRequest",
-    id: request.id,
-    expectedRevision: request.revision,
-    status: "submitted",
-    question: "",
-    mutationId: randomUUID(),
-  }).request as ChangeRequest;
+  return save(backend, intakeRequest()).request as ChangeRequest;
 }
 
 test("submitted requests can be edited without changing review state or losing scope", () => {
@@ -428,10 +420,13 @@ test("a request saves, lists and opens through the mocked Apps Script", () => {
   );
 });
 
-test("new requests must begin as empty-attachment drafts", () => {
+test("new requests must begin as submitted without an estimator", () => {
   const backend = mockBackend();
   const request = intakeRequest();
+  request.status = "in_review";
+  assert.equal(save(backend, request).code, "VALIDATION");
   request.status = "submitted";
+  request.estimatorName = "Someone";
   assert.equal(save(backend, request).code, "VALIDATION");
 });
 
@@ -472,14 +467,6 @@ test("failed index write keeps the old snapshot authoritative and releases the l
 test("claims have one winner and information requests return to the same estimator", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
-  request = backend.post({
-    action: "transitionRequest",
-    id: request.id,
-    expectedRevision: request.revision,
-    status: "submitted",
-    question: "",
-    mutationId: randomUUID(),
-  }).request;
   assert.equal(request.status, "submitted");
   request = save(backend, request).request;
   assert.equal(request.status, "submitted");
@@ -548,14 +535,6 @@ test("claims have one winner and information requests return to the same estimat
 test("an estimator marks an in-review request complete and it becomes immutable", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
-  request = backend.post({
-    action: "transitionRequest",
-    id: request.id,
-    expectedRevision: request.revision,
-    status: "submitted",
-    question: "",
-    mutationId: randomUUID(),
-  }).request;
   request = backend.post({
     action: "claimRequest",
     id: request.id,
@@ -773,16 +752,9 @@ test("frontend request APIs round-trip through Code.gs and surface conflicts", a
     const linked = await saveRequest(saved, saved.revision, randomUUID());
     const file = await fetchAttachment(linked.id, attachment.id);
     assert.equal(await file.blob.text(), bytes);
-    const submitted = await transitionRequest(
+    const claimed = await claimRequest(
       linked.id,
       linked.revision,
-      "submitted",
-      "",
-      randomUUID(),
-    );
-    const claimed = await claimRequest(
-      submitted.id,
-      submitted.revision,
       "Estimator",
       randomUUID(),
     );
@@ -804,7 +776,6 @@ test("signed line changes and final customer pricing round-trip through backend 
   const backend = mockBackend();
   const request = intakeRequest();
   request.lineNumbers = "+12, -34\n+56";
-  request.knownChangeAmount = "+1250.19";
   request.finalChangeOrder = {
     scope: "Customer-approved scope",
     amount: "-250.10",
@@ -813,15 +784,12 @@ test("signed line changes and final customer pricing round-trip through backend 
   assert.equal(result.ok, true);
   const opened = backend.get({ action: "openRequest", id: request.id }).request;
   assert.equal(opened.lineNumbers, request.lineNumbers);
-  assert.equal(opened.knownChangeAmount, request.knownChangeAmount);
   assert.deepEqual(
     JSON.parse(JSON.stringify(opened.finalChangeOrder)),
     request.finalChangeOrder,
   );
   for (const invalid of [
     { lineNumbers: "12" },
-    { knownChangeAmount: "+-12" },
-    { knownChangeAmount: "+1.234" },
     { finalChangeOrder: { scope: "Scope", amount: "1e3" } },
     { finalChangeOrder: null },
   ])
@@ -864,7 +832,7 @@ test("loadDashboard loads requests and jobs and falls back when bootstrap is mis
             revision: 1,
             createdAt: "",
             updatedAt: "",
-            status: "draft",
+            status: "submitted",
             estimatorName: "",
             changesCount: 0,
             attachmentsCount: 0,

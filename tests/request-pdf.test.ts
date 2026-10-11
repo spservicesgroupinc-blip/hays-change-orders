@@ -115,7 +115,6 @@ test("customer change order has letterhead, agreed scope, exact revised total an
     branchContact: "Jamie Estimator",
   });
   request.lineNumbers = "+12, -34";
-  request.knownChangeAmount = "+999.00";
   request.finalChangeOrder = {
     scope: "Remove selected trim.\nInstall agreed replacement material.",
     amount: "-250.10",
@@ -154,7 +153,6 @@ test("customer change order has letterhead, agreed scope, exact revised total an
   ])
     assert.ok(text.includes(expected), expected);
   assert.ok(!text.includes("INTERNAL NOTE"));
-  assert.ok(!text.includes("999.00"));
   assert.equal(changeOrderFilename(request), "change-order-FW-26-001.pdf");
   request.finalChangeOrder.scope = Array.from(
     { length: 60 },

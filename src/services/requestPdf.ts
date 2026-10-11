@@ -236,7 +236,6 @@ export async function generateRequestPdf(
   field("Request type", requestTypeLabel(request.requestType));
   field("Customer credits", customerCreditsLabel(request.customerCredits));
   field("Estimate line numbers", request.lineNumbers);
-  field("Known change amount", signedAmountLabel(request.knownChangeAmount));
   section("Customer and job details");
   const job = request.job;
   for (const [label, value] of [

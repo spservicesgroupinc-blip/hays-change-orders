@@ -1,5 +1,4 @@
 export type RequestStatus =
-  | "draft"
   | "submitted"
   | "in_review"
   | "needs_information"
@@ -29,8 +28,6 @@ export interface ChangeRequest {
   customerCredits?: boolean;
   /** Signed estimate line references, e.g. +12, -34; kept as submitted text. */
   lineNumbers?: string;
-  /** Optional submitter amount, prefilled for estimator review and editing. */
-  knownChangeAmount?: string;
   finalChangeOrder?: { scope: string; amount: string };
   id: string;
   revision: number;

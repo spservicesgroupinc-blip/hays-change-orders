@@ -39,7 +39,7 @@ export function customerDocumentDraft(request: ChangeRequest): ChangeRequest {
         : scope,
       amount: request.finalChangeOrder?.amount.trim()
         ? request.finalChangeOrder.amount
-        : (request.knownChangeAmount ?? ""),
+        : "",
     },
   };
 }
@@ -58,22 +58,16 @@ export function signedAmountLabel(value: string | undefined): string {
 }
 
 export function pricingInputError(
-  request: Pick<
-    ChangeRequest,
-    "lineNumbers" | "knownChangeAmount" | "finalChangeOrder"
-  >,
+  request: Pick<ChangeRequest, "lineNumbers" | "finalChangeOrder">,
 ): string {
   if (
     request.lineNumbers?.trim() &&
     !/^[+-][1-9]\d*(?:[\s,]+[+-][1-9]\d*)*$/.test(request.lineNumbers.trim())
   )
     return "Enter a line number greater than zero in each row and choose Add or Remove.";
-  for (const [label, value] of [
-    ["Known change amount", request.knownChangeAmount],
-    ["Final change amount", request.finalChangeOrder?.amount],
-  ])
-    if (value?.trim() && signedMoneyCents(value) === null)
-      return `${label} must be dollars with at most two decimal places, such as +1250.19 or -250.00.`;
+  const value = request.finalChangeOrder?.amount;
+  if (value?.trim() && signedMoneyCents(value) === null)
+    return "Final change amount must be dollars with at most two decimal places, such as +1250.19 or -250.00.";
   return "";
 }
 
@@ -88,7 +82,7 @@ export function finalDocumentError(request: ChangeRequest): string {
     ["Final customer scope", request.finalChangeOrder?.scope],
   ])
     if (!value?.trim())
-      return `Enter ${label!.toLowerCase()} in Prepare customer document, then save changes.`;
+      return `Enter ${label!.toLowerCase()} in Finalize customer document, then save changes.`;
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(job.date) ||
     Number.isNaN(Date.parse(job.date)) ||
