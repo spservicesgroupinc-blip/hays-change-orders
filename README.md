@@ -14,6 +14,14 @@ Open http://127.0.0.1:3010. `npm run build` creates the production site in `dist
 
 ## Use
 
+Choose **Change order** or **Insurance supplement** in the request details,
+and check **Yes, customer credits** when applicable. **Copy Dash note** above
+the submission button copies the answers, customer/job details, contract
+amounts, written scope, and attachment names for pasting into Dash. Estimators
+have the same button on the review screen; save corrections before copying.
+If clipboard access is blocked, the app provides selectable note text.
+Older requests show unanswered questions as **Not provided** until edited.
+
 1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. Drafts autosave as you type.
 2. **Estimators** open requests from the shared queue, review the submitted text, and preview or download each attached photo or PDF. Use **Download summary PDF** for a simple job summary with customer name, property address, phone/email when available, project manager, submitted changes, and attachment filenames. Complete the change order outside the app, then mark the request complete.
 3. **Admins** import each customer's contract amount with the job list: the Dash JobSummaryReport CSV (or an export with a contract-amount column) becomes the searchable job directory on the Jobs page. Picking a job in the request form fills in the job number, customer, property address, responsible project manager, and the customer's original contract amount, so nobody retypes the contract amount on the change order. Estimators can still override any of it.

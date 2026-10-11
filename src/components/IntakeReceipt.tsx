@@ -1,6 +1,7 @@
 import { CheckCircle2, Download, Eye, FileText, ImageIcon } from "lucide-react";
 import type { ChangeRequest, RequestAttachment } from "../types";
 import { contractAmounts } from "../services/contract";
+import { requestTypeLabel, customerCreditsLabel } from "../services/dashNote";
 import "./IntakeReceipt.css";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -54,6 +55,14 @@ export default function IntakeReceipt({
           ) : null}
         </div>
         <dl className="receipt-job">
+          <div>
+            <dt>Request type</dt>
+            <dd>{requestTypeLabel(request.requestType)}</dd>
+          </div>
+          <div>
+            <dt>Customer credits</dt>
+            <dd>{customerCreditsLabel(request.customerCredits)}</dd>
+          </div>
           <div>
             <dt>Job number</dt>
             <dd>{request.job.jobNumber || "—"}</dd>

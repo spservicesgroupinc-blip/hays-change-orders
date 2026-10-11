@@ -354,6 +354,20 @@ test("queued requests accept attachments and cannot bypass the status action", (
   assert.equal(save(backend, { ...request, status: "completed" }).code, "STATE");
 });
 
+test("request checkbox answers round-trip and reject malformed values", () => {
+  const backend = mockBackend();
+  const request = submittedRequest(backend);
+  request.requestType = "insurance_supplement";
+  request.customerCredits = true;
+  const saved = save(backend, request);
+  assert.equal(saved.ok, true);
+  const opened = backend.get({ action: "openRequest", id: request.id }).request;
+  assert.equal(opened.requestType, "insurance_supplement");
+  assert.equal(opened.customerCredits, true);
+  assert.equal(save(backend, { ...opened, requestType: "invalid" } as any).code, "VALIDATION");
+  assert.equal(save(backend, { ...opened, customerCredits: "yes" } as any).code, "VALIDATION");
+});
+
 test("a request saves, lists and opens through the mocked Apps Script", () => {
   const backend = mockBackend();
   const request = intakeRequest();

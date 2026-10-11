@@ -372,6 +372,61 @@ test("a project manager sends a text-only quick request", async ({ page }) => {
   });
 });
 
+test("checkbox answers are copied for Dash before submission and saved with the request", async ({
+  page,
+}) => {
+  const copied: string[] = [];
+  await page.exposeFunction("captureDashCopy", (text: string) =>
+    copied.push(text),
+  );
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => (window as any).captureDashCopy(text),
+      },
+    }),
+  );
+  const api = await installMockApi(page);
+  await page.goto("/#/simple");
+  await pickCustomer(page, "York Ridge Apartments");
+  await page
+    .getByRole("checkbox", { name: "Change order", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", { name: "Insurance supplement", exact: true })
+    .check();
+  await expect(
+    page.getByRole("checkbox", { name: "Change order", exact: true }),
+  ).not.toBeChecked();
+  await page
+    .getByRole("checkbox", { name: "Yes, customer credits", exact: true })
+    .check();
+  await page
+    .getByLabel("What changed?", { exact: true })
+    .fill("Credit for unused flooring.\nKeep this text.");
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Copied");
+  expect(api.saved).toHaveLength(0);
+  expect(copied).toHaveLength(1);
+  for (const expected of [
+    "Insurance supplement",
+    "Customer credits: Yes",
+    "York Ridge Apartments",
+    "F-26-0366-P",
+    "Credit for unused flooring.\nKeep this text.",
+  ])
+    expect(copied[0]).toContain(expected);
+  await page
+    .getByRole("button", { name: "Send to estimating", exact: true })
+    .click();
+  await expect(page.getByText(/Sent to estimating/)).toBeVisible();
+  expect(api.saved[0].requestType).toBe("insurance_supplement");
+  expect(api.saved[0].customerCredits).toBe(true);
+});
+
 test("a photo is marked up before it is sent, with an optional PDF", async ({
   page,
 }) => {
@@ -503,13 +558,11 @@ test("a photo the endpoint cannot accept (HEIC pick) is converted before upload"
   // A library pick that still arrives as HEIC: the form is handed image/heic,
   // which the Apps Script endpoint rejects outright ("Choose a supported file
   // smaller than 15 MB"). It must be converted to a JPEG before uploading.
-  await page
-    .locator('input[type="file"][accept^="image/jpeg"]')
-    .setInputFiles({
-      name: "IMG_1234.HEIC",
-      mimeType: "image/heic",
-      buffer: readFileSync(resolve("tmp/fixtures/photo-800x600.png")),
-    });
+  await page.locator('input[type="file"][accept^="image/jpeg"]').setInputFiles({
+    name: "IMG_1234.HEIC",
+    mimeType: "image/heic",
+    buffer: readFileSync(resolve("tmp/fixtures/photo-800x600.png")),
+  });
   await expect(page.getByRole("img", { name: "Photo 1" })).toBeVisible();
   await page
     .getByLabel("What changed?", { exact: true })

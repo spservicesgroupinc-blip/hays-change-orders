@@ -10,6 +10,8 @@ import {
 import type { ChangeRequest, RequestAttachment } from "../types";
 import IntakeReceipt from "./IntakeReceipt";
 import RequestEditor from "./RequestEditor";
+import CopyDashNote from "./CopyDashNote";
+import { formatDashNote } from "../services/dashNote";
 import "./RequestReview.css";
 
 export default function RequestReview({
@@ -57,6 +59,10 @@ export default function RequestReview({
       </button>
 
       <div className="review-actions">
+        <CopyDashNote
+          text={formatDashNote(request)}
+          disabled={editing || Boolean(busy)}
+        />
         {!editing && request.status !== "completed" ? (
           <button
             className="button"

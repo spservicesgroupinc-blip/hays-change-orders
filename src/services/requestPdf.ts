@@ -2,6 +2,7 @@ import { PDFDocument, PageSizes, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import type { ChangeRequest } from "../types";
 import { contractAmounts } from "./contract";
+import { requestTypeLabel, customerCreditsLabel } from "./dashNote";
 
 export function summaryFilename(request: ChangeRequest): string {
   const identifier = (request.job.jobNumber.trim() || request.id)
@@ -97,6 +98,8 @@ export async function generateRequestPdf(
   );
   field("Status", request.status.replace(/_/g, " "));
   field("Assigned estimator", request.estimatorName);
+  field("Request type", requestTypeLabel(request.requestType));
+  field("Customer credits", customerCreditsLabel(request.customerCredits));
   section("Customer and job details");
   const job = request.job;
   for (const [label, value] of [

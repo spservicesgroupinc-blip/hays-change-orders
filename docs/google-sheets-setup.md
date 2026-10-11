@@ -83,6 +83,11 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
 
 ### Rollout: editable requests and summary PDFs
 
+The request JSON also stores optional `requestType` (`change_order` or
+`insurance_supplement`) and boolean `customerCredits` answers. No sheet-column
+changes are required. **Copy Dash note** runs locally and does not submit a
+request or write anything into Dash.
+
 Deploy the updated `apps-script/Code.gs` **before** deploying the frontend.
 Update the existing web-app deployment to the new script version so the URL
 stays the same. The backend permits edits and new attachments while a request

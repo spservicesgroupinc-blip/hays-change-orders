@@ -9,6 +9,7 @@ export function createRequest(): ChangeRequest {
   const now = new Date().toISOString();
   return {
     schemaVersion: 2,
+    customerCredits: false,
     id: newId(),
     revision: 0,
     createdAt: now,

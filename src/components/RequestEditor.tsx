@@ -19,6 +19,7 @@ import {
 } from "../services/photoUpload";
 import { moneyCents } from "../services/contract";
 import "./RequestEditor.css";
+import RequestQuestions from "./RequestQuestions";
 
 type PendingFile = {
   id: string;
@@ -265,6 +266,13 @@ export default function RequestEditor({
         disabled={Boolean(progress) || retrySave}
         className="editor-fields"
       >
+        <RequestQuestions
+          requestType={draft.requestType}
+          customerCredits={draft.customerCredits}
+          onChange={(answers) =>
+            setDraft((previous) => ({ ...previous, ...answers }))
+          }
+        />
         <div className="editor-job-grid">
           {JOB_FIELDS.map(([key, label]) => (
             <label className="field" key={key}>

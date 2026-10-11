@@ -661,3 +661,89 @@ test("review and editor fit narrow and wide screens without browser errors", asy
   });
   expect(errors).toEqual([]);
 });
+
+test("estimators copy saved answers and text, including after corrections", async ({
+  page,
+}) => {
+  const copied: string[] = [];
+  await page.exposeFunction("captureDashCopy", (text: string) =>
+    copied.push(text),
+  );
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (text: string) => (window as any).captureDashCopy(text),
+      },
+    }),
+  );
+  await installMockApi(page, {
+    requestType: "insurance_supplement",
+    customerCredits: true,
+  });
+  await page.goto("/#/requests/r1");
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Copied");
+  for (const expected of [
+    "Insurance supplement",
+    "Customer credits: Yes",
+    "Wet insulation behind the kitchen wall",
+    "York Ridge Apartments",
+    "photo1.jpg",
+    "note.pdf",
+  ])
+    expect(copied[0]).toContain(expected);
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Copy Dash note", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("checkbox", { name: "Change order", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", { name: "Yes, customer credits", exact: true })
+    .uncheck();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Edit request", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Copied");
+  expect(copied[1]).toContain("Request type: Change order");
+  expect(copied[1]).toContain("Customer credits: No");
+});
+
+test("blocked clipboard access offers selectable note text on completed requests", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error("Clipboard blocked")),
+      },
+    }),
+  );
+  await installMockApi(page, {
+    status: "completed",
+    requestType: "change_order",
+    customerCredits: false,
+  });
+  await page.goto("/#/requests/r1");
+  await page
+    .getByRole("button", { name: "Copy Dash note", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Clipboard access is unavailable",
+  );
+  await expect(page.getByLabel("Dash note to copy manually")).toHaveValue(
+    /Wet insulation behind the kitchen wall/,
+  );
+  await expect(page.getByLabel("Dash note to copy manually")).toHaveValue(
+    /Customer credits: No/,
+  );
+});

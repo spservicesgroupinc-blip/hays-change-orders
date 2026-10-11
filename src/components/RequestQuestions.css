@@ -1,0 +1,36 @@
+.request-questions {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.request-questions legend {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.request-questions p {
+  color: #3e4756;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.request-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.request-checkbox input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--red);
+}
+.request-questions small {
+  color: #4b5563;
+}

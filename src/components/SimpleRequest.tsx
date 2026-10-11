@@ -18,6 +18,9 @@ import {
   preparePhotoForUpload,
 } from "../services/photoUpload";
 import PhotoAnnotator from "./PhotoAnnotator";
+import RequestQuestions from "./RequestQuestions";
+import CopyDashNote from "./CopyDashNote";
+import { formatDashNote } from "../services/dashNote";
 import "./SimpleRequest.css";
 
 export interface SimpleRequestProps {
@@ -104,7 +107,10 @@ const VOICE_ERRORS: Record<string, string | undefined> = {
  */
 function buildRequest(
   base: ChangeRequest | null,
-  details: { job: JobEntry | null; customer: string; note: string },
+  details: { job: JobEntry | null; customer: string; note: string } & Pick<
+    ChangeRequest,
+    "requestType" | "customerCredits"
+  >,
 ): ChangeRequest {
   const request = base ?? createRequest();
   const description = details.note.trim();
@@ -113,6 +119,8 @@ function buildRequest(
     updatedAt: new Date().toISOString(),
     status: "draft",
     submittedAt: null,
+    requestType: details.requestType,
+    customerCredits: details.customerCredits,
     job: {
       ...request.job,
       customer: details.customer,
@@ -221,6 +229,9 @@ export default function SimpleRequest(
   const [customerText, setCustomerText] = useState("");
   const [matchListOpen, setMatchListOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [requestType, setRequestType] =
+    useState<ChangeRequest["requestType"]>();
+  const [customerCredits, setCustomerCredits] = useState(false);
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [pdf, setPdf] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -424,6 +435,8 @@ export default function SimpleRequest(
         job: selectedJob,
         customer,
         note,
+        requestType,
+        customerCredits,
       });
       const saved = await saveRequest(request, prior?.revision ?? 0, newId());
       // Keep the saved request and its revision. A later failure retries against
@@ -643,6 +656,18 @@ export default function SimpleRequest(
         </section>
 
         <section className="sr-section">
+          <RequestQuestions
+            requestType={requestType}
+            customerCredits={customerCredits}
+            disabled={busy}
+            onChange={(answers) => {
+              setRequestType(answers.requestType);
+              setCustomerCredits(answers.customerCredits ?? false);
+            }}
+          />
+        </section>
+
+        <section className="sr-section">
           <h2 className="sr-section-title">Photos</h2>
           <p className="sr-help">
             Take a photo or pick one from the phone. Mark up a photo to point at
@@ -794,6 +819,22 @@ export default function SimpleRequest(
         </section>
 
         <div className="sr-submit">
+          <CopyDashNote
+            disabled={busy}
+            text={formatDashNote(
+              buildRequest(savedAttempt.current?.request ?? null, {
+                job: selectedJob,
+                customer: (selectedJob?.customer ?? customerText).trim(),
+                note,
+                requestType,
+                customerCredits,
+              }),
+              [
+                ...photos.map((photo) => photo.file.name),
+                ...(pdf ? [pdf.name] : []),
+              ],
+            )}
+          />
           {submitError ? (
             <p className="sr-error" role="alert">
               {submitError}

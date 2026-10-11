@@ -25,6 +25,8 @@ export interface RequestAttachment {
 }
 export interface ChangeRequest {
   schemaVersion: 2;
+  requestType?: "change_order" | "insurance_supplement";
+  customerCredits?: boolean;
   id: string;
   revision: number;
   createdAt: string;

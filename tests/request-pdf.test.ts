@@ -31,6 +31,8 @@ async function readPdf(bytes: Uint8Array) {
 test("summary PDF includes contact details, prices, notes and attachment names", async () => {
   const request = createRequest();
   request.id = "qa-request";
+  request.requestType = "insurance_supplement";
+  request.customerCredits = true;
   request.submittedAt = "2026-10-11T15:00:00Z";
   Object.assign(request.job, {
     customer: "José & Zoë Customer",
@@ -72,6 +74,8 @@ test("summary PDF includes contact details, prices, notes and attachment names",
   const pages = await readPdf(bytes);
   const text = pages.map((page) => page.text).join(" ");
   for (const expected of [
+    "Request type: Insurance supplement",
+    "Customer credits: Yes",
     "José & Zoë Customer",
     "260-555-0144",
     "customer@example.com",
