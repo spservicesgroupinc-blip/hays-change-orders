@@ -3,39 +3,23 @@
  *
  * Container-bound script: paste this whole file into the Apps Script editor
  * attached to a Google Sheet (Extensions → Apps Script), then run setup()
- * once (or use the "Change Orders" menu). setup() creates the Drafts sheet
- * and the Drive folder. Finally deploy as a web app (execute as me, access:
- * Anyone) and paste the Web app URL into .env.local.
+ * once (or use the "Change Orders" menu). setup() creates the Requests and
+ * Jobs sheets and the Drive folder. Finally deploy as a web app (execute as
+ * me, access: Anyone) and paste the Web app URL into .env.local.
  *
  * Endpoints:
- *   GET  ?action=list             → { ok, drafts: [{summary…}] }
- *   GET  ?action=open&id=…        → { ok, draft }
- *   GET  ?action=pdf&id=…         → { ok, name, mimeType, data(base64) }
- *   POST {action:"save", draft}   → { ok }
- *   POST {action:"delete", id}    → { ok }
- *   POST {action:"uploadPdf", …}  → { ok, fileId }
+ *   GET  ?action=bootstrap          → { ok, requests, jobs }
+ *   GET  ?action=listRequests       → { ok, requests: [{summary…}] }
+ *   GET  ?action=openRequest&id=…   → { ok, request }
+ *   GET  ?action=listJobs           → { ok, jobs }
+ *   GET  ?action=fetchAttachment…   → { ok, name, mimeType, data(base64) }
+ *   POST {action:"saveRequest"}      → { ok, request }
+ *   POST {action:"claimRequest"}     → { ok, request }
+ *   POST {action:"transitionRequest"} → { ok, request }
+ *   POST {action:"uploadAttachment"}  → { ok, attachment }
  */
 
-const SHEET_NAME = "Drafts";
 const DRIVE_FOLDER_NAME = "hays-change-orders";
-
-const COLS = {
-  ID: 0,
-  REVISION: 1,
-  CREATED_AT: 2,
-  UPDATED_AT: 3,
-  STEP: 4,
-  CUSTOMER: 5,
-  JOB_NUMBER: 6,
-  ORDER_NUMBER: 7,
-  ADDRESS: 8,
-  CHANGES_COUNT: 9,
-  SOURCE_NAME: 10,
-  SOURCE_PAGES: 11,
-  DRIVE_FILE_ID: 12,
-  DATA: 13,
-};
-const COLUMN_COUNT = 14;
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
@@ -45,34 +29,6 @@ function json_(obj) {
 
 function fail_(message, code, currentRevision) {
   return json_({ ok: false, error: message, code: code || "SERVICE_ERROR", currentRevision: currentRevision });
-}
-
-function sheet_() {
-  const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty("SPREADSHEET_ID");
-  const ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new Error("Run setup() in the spreadsheet editor to configure SPREADSHEET_ID.");
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow([
-      "id",
-      "revision",
-      "createdAt",
-      "updatedAt",
-      "step",
-      "customer",
-      "jobNumber",
-      "orderNumber",
-      "address",
-      "changesCount",
-      "sourceName",
-      "sourcePages",
-      "driveFileId",
-      "data",
-    ]);
-  }
-  return sheet;
 }
 
 function folder_() {
@@ -97,13 +53,13 @@ function folder_() {
 function setup() {
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", active.getId());
-  const sheet = sheet_();
   const folder = folder_();
   requestsSheet_();
   jobsSheet_();
   const summary = [
     "Setup complete.",
-    "Drafts sheet: " + sheet.getName(),
+    "Requests sheet: Requests",
+    "Jobs sheet: Jobs",
     "Drive folder: " + folder.getName(),
     "",
     "Then: Deploy → New deployment → Web app",
@@ -132,55 +88,6 @@ function onOpen() {
     .addToUi();
 }
 
-function findRow_(id) {
-  const sheet = sheet_();
-  const last = sheet.getLastRow();
-  if (last < 2) return null;
-  const ids = sheet.getRange(2, COLS.ID + 1, last - 1, 1).getValues();
-  for (let i = 0; i < ids.length; i += 1) {
-    if (String(ids[i][0]) === String(id)) return i + 2;
-  }
-  return null;
-}
-
-function rowToSummary_(values) {
-  return {
-    id: String(values[COLS.ID] || ""),
-    revision: Number(values[COLS.REVISION] || 0),
-    createdAt: String(values[COLS.CREATED_AT] || ""),
-    updatedAt: String(values[COLS.UPDATED_AT] || ""),
-    step: Number(values[COLS.STEP] || 0),
-    customer: String(values[COLS.CUSTOMER] || ""),
-    jobNumber: String(values[COLS.JOB_NUMBER] || ""),
-    orderNumber: String(values[COLS.ORDER_NUMBER] || ""),
-    address: String(values[COLS.ADDRESS] || ""),
-    changesCount: Number(values[COLS.CHANGES_COUNT] || 0),
-    sourceName: String(values[COLS.SOURCE_NAME] || ""),
-    hasSource: Boolean(values[COLS.DRIVE_FILE_ID]),
-  };
-}
-
-function draftToRow_(draft) {
-  const source = draft && draft.source ? draft.source : null;
-  const job = draft && draft.job ? draft.job : {};
-  return [
-    draft.id,
-    draft.revision,
-    draft.createdAt,
-    draft.updatedAt,
-    draft.step,
-    job.customer || "",
-    job.jobNumber || "",
-    job.orderNumber || "",
-    job.address || "",
-    Array.isArray(draft.changes) ? draft.changes.length : 0,
-    source ? source.name : "",
-    source ? source.pages : "",
-    source && source.driveFileId ? source.driveFileId : "",
-    JSON.stringify(draft),
-  ];
-}
-
 function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.action === "bootstrap") return guarded_(function () { return bootstrap_(); });
@@ -188,9 +95,6 @@ function doGet(e) {
   if (p.action === "openRequest") return guarded_(function () { return openRequest_(p.id); });
   if (p.action === "listJobs") return guarded_(function () { return listJobs_(); });
   if (p.action === "fetchAttachment") return guarded_(function () { return fetchAttachment_(p.requestId, p.attachmentId); });
-  if (p.action === "list") return list_();
-  if (p.action === "open") return open_(p.id);
-  if (p.action === "pdf") return pdf_(p.id);
   return fail_("Unknown action.");
 }
 
@@ -206,100 +110,7 @@ function doPost(e) {
   if (body.action === "claimRequest") return guarded_(function () { return claimRequest_(body); });
   if (body.action === "transitionRequest") return guarded_(function () { return transitionRequest_(body); });
   if (body.action === "uploadAttachment") return guarded_(function () { return uploadAttachment_(body); });
-  if (body.action === "completeRequest") return guarded_(function () { return completeRequest_(body); });
-  if (body.action === "convertLegacyRequest") return guarded_(function () { return convertLegacyRequest_(body); });
-  if (body.action === "importJobs") return guarded_(function () { return importJobs_(body); });
-  if (body.action === "save") return save_(body.draft);
-  if (body.action === "delete") return delete_(body.id);
-  if (body.action === "uploadPdf") return uploadPdf_(body);
   return fail_("Unknown action.");
-}
-
-function draftRows_() {
-  const sheet = sheet_();
-  const last = sheet.getLastRow();
-  const values =
-    last >= 2
-      ? sheet.getRange(2, 1, last - 1, COLUMN_COUNT).getValues()
-      : [];
-  return values
-    .map(rowToSummary_)
-    .sort(function (a, b) {
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
-}
-function list_() {
-  return json_({ ok: true, drafts: draftRows_() });
-}
-
-function open_(id) {
-  const row = findRow_(id);
-  if (!row) return fail_("Draft not found.");
-  const values = sheet_().getRange(row, 1, 1, COLUMN_COUNT).getValues()[0];
-  return json_({ ok: true, draft: JSON.parse(String(values[COLS.DATA])) });
-}
-
-function pdf_(id) {
-  try {
-    const file = DriveApp.getFileById(id);
-    const bytes = file.getBlob().getBytes();
-    return json_({
-      ok: true,
-      name: file.getName(),
-      mimeType: file.getMimeType(),
-      data: Utilities.base64Encode(bytes),
-    });
-  } catch (e) {
-    return fail_("Source PDF not found.");
-  }
-}
-
-function save_(draft) {
-  if (!draft || !draft.id) return fail_("Draft is missing.");
-  const sheet = sheet_();
-  const row = findRow_(draft.id);
-  if (row) {
-    const currentRevision = Number(
-      sheet.getRange(row, COLS.REVISION + 1).getValue() || 0,
-    );
-    if (currentRevision > draft.revision)
-      return fail_(
-        "A newer version of this draft already exists. Refresh and reopen it before editing.",
-      );
-    const values = draftToRow_(draft);
-    sheet.getRange(row, 1, 1, values.length).setValues([values]);
-  } else {
-    sheet.appendRow(draftToRow_(draft));
-  }
-  return json_({ ok: true });
-}
-
-function delete_(id) {
-  const row = findRow_(id);
-  if (!row) return json_({ ok: true });
-  const sheet = sheet_();
-  const fileId = String(
-    sheet.getRange(row, COLS.DRIVE_FILE_ID + 1).getValue() || "",
-  );
-  sheet.deleteRow(row);
-  if (fileId) {
-    try {
-      DriveApp.getFileById(fileId).setTrashed(true);
-    } catch (e) {
-      // already gone
-    }
-  }
-  return json_({ ok: true });
-}
-
-function uploadPdf_(body) {
-  const bytes = Utilities.base64Decode(String(body.data || ""));
-  const mimeType = String(body.mimeType || "application/pdf");
-  const name = String(body.name || "estimate.pdf");
-  const blob = Utilities.newBlob(bytes, mimeType, name);
-  // Replaced crashing code (.setBlob on file objects) with safely building entirely new files.
-  const fileId = folder_().createFile(blob).getId();
-  return json_({ ok: true, fileId: fileId });
 }
 
 const REQUEST_HEADERS = ["id", "revision", "createdAt", "updatedAt", "status", "estimatorName", "customer", "jobNumber", "projectManager", "orderNumber", "address", "changesCount", "attachmentsCount", "dataFileId", "previousDataFileId", "folderId"];
@@ -382,20 +193,6 @@ function jobRows_() {
 function listJobs_() {
   return json_({ ok: true, jobs: jobRows_() });
 }
-function importJobs_(body) {
-  if (!body || !Array.isArray(body.jobs)) problem_("VALIDATION", "A jobs array is required.");
-  if (body.jobs.length > 5000) problem_("VALIDATION", "Too many jobs to import at once.");
-  const sheet = jobsSheet_();
-  const now = new Date().toISOString();
-  const values = body.jobs.map(function (job) {
-    return [String(job.id || ""), String(job.jobNumber || ""), String(job.customer || ""), String(job.address || ""), String(job.projectManager || ""), String(job.estimator || ""), String(job.status || ""), String(job.customerPhone || ""), String(job.customerEmail || ""), Boolean(job.active), String(job.updatedAt || now), String(job.contractAmount || "")];
-  });
-  const last = sheet.getLastRow();
-  if (last > 1) sheet.getRange(2, 1, last - 1, JOB_HEADERS.length).clearContent();
-  if (values.length) sheet.getRange(2, 1, values.length, JOB_HEADERS.length).setValues(values);
-  SpreadsheetApp.flush();
-  return json_({ ok: true, jobs: body.jobs });
-}
 function requestRow_(id) {
   const sheet = requestsSheet_();
   const last = sheet.getLastRow();
@@ -420,9 +217,10 @@ function listRequests_() {
   return json_({ ok: true, requests: requestRows_() });
 }
 function bootstrap_() {
-  // One round-trip loads everything the dashboard and job picker need, instead
-  // of three separate Apps Script executions (each with a cold-start delay).
-  return json_({ ok: true, requests: requestRows_(), drafts: draftRows_(), jobs: jobRows_() });
+  // One round-trip loads everything the dashboard and quick request need,
+  // instead of two separate Apps Script executions (each with a cold-start
+  // delay).
+  return json_({ ok: true, requests: requestRows_(), jobs: jobRows_() });
 }
 function openRequest_(id) {
   const row = requestRow_(id); if (!row) problem_("NOT_FOUND", "Request not found.");
@@ -458,32 +256,18 @@ function submissionErrors_(request) {
   // fields, no minimum work areas, and no quote-cost formatting rules.
   return [];
 }
-function readyErrors_(request) {
-  // The estimator decides when an order is ready. Missing details print blank
-  // in the packet and amounts that cannot be parsed print as $0.00, so marking
-  // an order ready never blocks on missing data — no confirmations, no required
-  // job details, and no coverage of every requested change.
-  return [];
-}
 function shapeCheck_(request) {
   if (!request || request.schemaVersion !== 2 || !request.id || typeof request.id !== "string" || request.id.length > 100 || !request.job) problem_("VALIDATION", "A valid version-2 request is required.");
-  ["requestedChanges", "quotes", "attachments", "estimate", "pricedItems", "extractionWarnings"].forEach(function(key) { if (!Array.isArray(request[key])) problem_("VALIDATION", key + " must be a list."); });
-  if (!request.exclusions || typeof request.exclusions !== "object" || Array.isArray(request.exclusions)) problem_("VALIDATION", "Exclusions must be keyed by requested change.");
-  ["estimatorName", "informationQuestion", "customerScope"].forEach(function(key) { if (typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
+  ["requestedChanges", "attachments"].forEach(function(key) { if (!Array.isArray(request[key])) problem_("VALIDATION", key + " must be a list."); });
+  ["estimatorName", "informationQuestion"].forEach(function(key) { if (typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
   const jobKeys = ["customer", "address", "jobNumber", "projectManager", "branchName", "branchAddress", "branchPhone", "branchContact", "carrier", "claim", "orderNumber", "date", "originalContract", "previousChanges", "addedDays"];
   jobKeys.forEach(function(key) { if (typeof request.job[key] !== "string") problem_("VALIDATION", "Job " + key + " must be text."); });
   const unique = function(rows) { const seen = {}; rows.forEach(function(row) { if (!row || !row.id || typeof row.id !== "string" || seen[row.id]) problem_("VALIDATION", "Item identifiers must be unique."); seen[row.id] = true; }); };
-  unique(request.requestedChanges); unique(request.quotes); unique(request.attachments); unique(request.estimate); unique(request.pricedItems);
+  unique(request.requestedChanges); unique(request.attachments);
   request.requestedChanges.forEach(function(change) {
     ["room", "description", "reason", "measurements", "materials", "scheduleImpact"].forEach(function(key) { if (typeof change[key] !== "string") problem_("VALIDATION", "Requested change " + key + " must be text."); });
-    if (["add", "revise", "remove"].indexOf(change.action) < 0 || !Array.isArray(change.estimateItemIds)) problem_("VALIDATION", "Invalid requested change.");
-    if (change.estimateItemIds.some(function(id) { return !request.estimate.some(function(item) { return item.id === id; }); })) problem_("VALIDATION", "A referenced estimate item is missing.");
+    if (["add", "revise", "remove"].indexOf(change.action) < 0) problem_("VALIDATION", "Invalid requested change.");
   });
-  request.quotes.forEach(function(quote) {
-    ["subcontractor", "trade", "cost", "notes"].forEach(function(key) { if (typeof quote[key] !== "string") problem_("VALIDATION", "Quote " + key + " must be text."); });
-    if (!Array.isArray(quote.changeIds) || !Array.isArray(quote.attachmentIds) || quote.changeIds.some(function(id) { return !request.requestedChanges.some(function(change) { return change.id === id; }); }) || quote.attachmentIds.some(function(id) { return !request.attachments.some(function(attachment) { return attachment.id === id && attachment.kind === "quote"; }); })) problem_("VALIDATION", "A quote references a missing change or quote attachment.");
-  });
-  if (request.estimateAttachmentId && !request.attachments.some(function(attachment) { return attachment.id === request.estimateAttachmentId && attachment.kind === "estimate"; })) problem_("VALIDATION", "The source estimate attachment is missing.");
 }
 function attachmentFile_(row, attachment) {
   let file, metadata;
@@ -492,18 +276,6 @@ function attachmentFile_(row, attachment) {
   while (parents.hasNext()) if (parents.next().getId() === String(row.values[RC.FOLDER])) belongs = true;
   if (!belongs || metadata.requestId !== String(row.values[RC.ID]) || metadata.attachment.id !== attachment.id || metadata.attachment.driveFileId !== attachment.driveFileId) problem_("VALIDATION", "Attachment does not belong to this request.");
   return { file: file, attachment: metadata.attachment };
-}
-function intakeFingerprint_(request) {
-  return JSON.stringify([request.requestedChanges, request.quotes, request.attachments, request.estimate, request.estimateAttachmentId, ["customer", "address", "jobNumber", "projectManager", "carrier", "claim", "insuranceRelated"].map(function(key) { return request.job[key]; })]);
-}
-function invalidateIntake_(previous, request) {
-  const affected = {}; const all = function() { request.requestedChanges.forEach(function(change) { affected[change.id] = true; }); };
-  const shared = function(value) { return JSON.stringify([value.estimate, value.estimateAttachmentId, ["customer", "address", "jobNumber", "projectManager", "carrier", "claim", "insuranceRelated"].map(function(key) { return value.job[key]; })]); };
-  if (shared(previous) !== shared(request)) all();
-  previous.requestedChanges.concat(request.requestedChanges).forEach(function(change) { const old = previous.requestedChanges.filter(function(item) { return item.id === change.id; })[0]; const next = request.requestedChanges.filter(function(item) { return item.id === change.id; })[0]; if (JSON.stringify(old) !== JSON.stringify(next)) affected[change.id] = true; });
-  previous.quotes.concat(request.quotes).forEach(function(quote) { const old = previous.quotes.filter(function(item) { return item.id === quote.id; })[0]; const next = request.quotes.filter(function(item) { return item.id === quote.id; })[0]; if (JSON.stringify(old) !== JSON.stringify(next)) { const ids = (old ? old.changeIds : []).concat(next ? next.changeIds : []); if (!ids.length) all(); else ids.forEach(function(id) { affected[id] = true; }); } });
-  previous.attachments.concat(request.attachments).forEach(function(attachment) { const old = previous.attachments.filter(function(item) { return item.id === attachment.id; })[0]; const next = request.attachments.filter(function(item) { return item.id === attachment.id; })[0]; if (JSON.stringify(old) !== JSON.stringify(next)) { const ids = []; previous.quotes.concat(request.quotes).forEach(function(quote) { if (quote.attachmentIds.indexOf(attachment.id) >= 0) quote.changeIds.forEach(function(id) { ids.push(id); }); }); if (!ids.length) all(); else ids.forEach(function(id) { affected[id] = true; }); } });
-  request.pricedItems.forEach(function(item) { if (affected[item.requestChangeId]) item.pricingConfirmed = false; }); request.contractConfirmed = false; request.customerScopeConfirmed = false;
 }
 function saveRequest_(body) {
   checkMutation_(body); shapeCheck_(body.request);
@@ -516,13 +288,10 @@ function saveRequest_(body) {
       request.submittedAt = null; request.informationQuestion = "";
     } else {
       const previous = snapshot.request;
-      if (previous.status === "submitted" || previous.status === "ready" || previous.status === "completed") problem_("STATE", "Reopen or claim this request before editing it.");
+      if (previous.status === "submitted" || previous.status === "in_review" || previous.status === "completed") problem_("STATE", "Reopen or claim this request before editing it.");
       if (request.status !== previous.status || request.estimatorName !== previous.estimatorName) problem_("STATE", "Use the claim or status action to change review state.");
-      request.submittedAt = previous.submittedAt; request.informationQuestion = previous.informationQuestion; request.legacyDraftId = previous.legacyDraftId;
+      request.submittedAt = previous.submittedAt; request.informationQuestion = previous.informationQuestion;
       request.attachments = request.attachments.map(function(attachment) { return attachmentFile_(row, attachment).attachment; });
-      if (intakeFingerprint_(previous) !== intakeFingerprint_(request)) {
-        invalidateIntake_(previous, request);
-      }
     }
     return commitRequest_(request, row, snapshot, body.mutationId);
   });
@@ -550,43 +319,12 @@ function transitionRequest_(body) {
       errors = submissionErrors_(request); request.submittedAt = new Date().toISOString(); request.informationQuestion = "";
     } else if (target === "needs_information" && request.status === "in_review") {
       if (!String(body.question || "").trim()) errors.push("Describe the information the project manager must provide."); request.informationQuestion = String(body.question || "").trim();
-    } else if (target === "ready" && request.status === "in_review") { errors = readyErrors_(request); }
-    else problem_("STATE", "That status change is not permitted.");
+    } else if (target === "completed" && request.status === "in_review") {
+      // Completing is a simple status change: the estimator finishes the change
+      // order outside the app and records it here for the queue log.
+    } else problem_("STATE", "That status change is not permitted.");
     if (errors.length) problem_("VALIDATION", errors.join("\n"));
     request.status = target === "submitted" && request.estimatorName ? "in_review" : target;
-    return commitRequest_(request, row, snapshot, body.mutationId);
-  });
-}
-function completeRequest_(body) {
-  if (!body.id || !body.mutationId) problem_("VALIDATION", "Request and mutation identifiers are required.");
-  if (!Array.isArray(body.documents) || !body.documents.length) problem_("VALIDATION", "Attach at least one final document before completing.");
-  checkMutation_(body);
-  return locked_(function () {
-    const row = requestRow_(body.id);
-    if (!row) problem_("NOT_FOUND", "Request not found.");
-    const snapshot = readSnapshot_(row);
-    if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request });
-    revisionCheck_(row, body.expectedRevision);
-    const request = snapshot.request;
-    if (request.status !== "ready") problem_("STATE", "Only a ready request can be completed.");
-    const folder = DriveApp.getFolderById(String(row.values[RC.FOLDER]));
-    const documents = body.documents.map(function (doc, index) {
-      const info = doc || {};
-      const label = "Document " + (index + 1);
-      if (typeof info.name !== "string" || !info.name.trim() || info.mimeType !== "application/pdf" || !Number.isInteger(info.size) || info.size <= 0 || info.size > 15 * 1024 * 1024 || typeof info.data !== "string" || info.data.length > 21 * 1024 * 1024) problem_("VALIDATION", label + " is incomplete or too large.");
-      let bytes; try { bytes = Utilities.base64Decode(info.data); } catch (error) { problem_("UPLOAD_FAILED", label + " could not be decoded."); }
-      if (bytes.length !== info.size) problem_("VALIDATION", label + " size does not match its content.");
-      const b = bytes.map(function (value) { return value & 255; });
-      if (!(b[0] === 37 && b[1] === 80 && b[2] === 68 && b[3] === 70 && b[4] === 45)) problem_("VALIDATION", label + " is not a valid PDF.");
-      const attachmentId = Utilities.getUuid();
-      const name = String(info.name).split(/[\\/]/).pop().slice(0, 200);
-      const file = folder.createFile(Utilities.newBlob(bytes, "application/pdf", "attachment-" + attachmentId));
-      const attachment = { id: attachmentId, kind: "document", name: name, mimeType: "application/pdf", size: bytes.length, driveFileId: file.getId() };
-      file.setDescription(JSON.stringify({ requestId: body.id, mutationId: body.mutationId, attachment: attachment }));
-      return attachment;
-    });
-    request.attachments = (request.attachments || []).concat(documents);
-    request.status = "completed";
     return commitRequest_(request, row, snapshot, body.mutationId);
   });
 }
@@ -624,37 +362,4 @@ function fetchAttachment_(requestId, attachmentId) {
   if (!attachment) problem_("NOT_FOUND", "Attachment is not linked to this request.");
   const owned = attachmentFile_(row, attachment);
   return json_({ ok: true, name: owned.attachment.name, mimeType: owned.attachment.mimeType, data: Utilities.base64Encode(owned.file.getBlob().getBytes()) });
-}
-function convertLegacyRequest_(body) {
-  if (!body.id || !body.mutationId) problem_("VALIDATION", "Legacy draft and mutation identifiers are required.");
-  return locked_(function() {
-    const sheet = requestsSheet_(); const last = sheet.getLastRow(); const rows = last < 2 ? [] : sheet.getRange(2, 1, last - 1, REQUEST_HEADERS.length).getValues();
-    // Safely iterate backward so a broken/deleted request's snapshot will not abort migration search
-    for (let i = rows.length - 1; i >= 0; i--) { 
-      try {
-        const snapshot = readSnapshot_({ values: rows[i] }); 
-        if (sameMutation_(snapshot, body.mutationId)) return json_({ ok: true, request: snapshot.request }); 
-      } catch (error) {
-        // Skip over unreachable files safely
-      }
-    }
-    const oldRow = findRow_(body.id); if (!oldRow) problem_("NOT_FOUND", "Legacy draft not found.");
-    const old = JSON.parse(String(sheet_().getRange(oldRow, COLS.DATA + 1).getValue())); const id = Utilities.getUuid();
-    const folder = folder_().createFolder("request-" + id); const attachments = []; let estimateId = null;
-    if (old.source && old.source.driveFileId) {
-      const attachmentId = Utilities.getUuid(); 
-      try {
-        const copy = DriveApp.getFileById(old.source.driveFileId).makeCopy("attachment-" + attachmentId, folder);
-        const attachment = { id: attachmentId, kind: "estimate", name: old.source.name, mimeType: "application/pdf", size: copy.getBlob().getBytes().length, driveFileId: copy.getId() };
-        copy.setDescription(JSON.stringify({ requestId: id, mutationId: body.mutationId, attachment: attachment })); attachments.push(attachment); estimateId = attachmentId;
-      } catch (copyError) {
-        // Suppress failure if legacy source doesn't exist anymore
-      }
-    }
-    // Prevent unhandled TypeErrors from mappings when an unpopulated draft had no changes
-    const changes = old.changes || [];
-    const request = { schemaVersion: 2, id: id, revision: 0, createdAt: "", updatedAt: "", status: "draft", estimatorName: "", submittedAt: null, informationQuestion: "", job: old.job, requestedChanges: changes.map(function(item) { return { id: Utilities.getUuid(), room: item.room, action: item.action, description: item.description, reason: item.reason, measurements: "", materials: "", scheduleImpact: "", estimateItemIds: item.original ? [item.original.id] : [] }; }), quotes: [], attachments: attachments, estimate: old.estimate || [], estimateAttachmentId: estimateId, extractionWarnings: old.extractionWarnings || [], pricedItems: [], exclusions: {}, customerScope: old.scope || "", customerScopeEdited: Boolean(old.scopeEdited), customerScopeConfirmed: false, contractConfirmed: false, legacyDraftId: old.id };
-    request.pricedItems = changes.map(function(item, index) { return Object.assign({}, item, { requestChangeId: request.requestedChanges[index].id, pricingConfirmed: false }); });
-    return commitRequest_(request, null, null, body.mutationId, folder);
-  });
 }

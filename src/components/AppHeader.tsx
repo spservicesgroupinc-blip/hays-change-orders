@@ -1,15 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  Archive,
-  ArrowLeft,
-  FolderOpen,
-  Inbox,
-  ListChecks,
-  Menu,
-  ShieldCheck,
-  X,
-  Zap,
-} from "lucide-react";
+import { ArrowLeft, Inbox, Menu, ShieldCheck, X, Zap } from "lucide-react";
 import type { NavDestination } from "../services/navigation";
 import "./AppHeader.css";
 
@@ -20,9 +10,6 @@ const NAV_ITEMS: {
 }[] = [
   { id: "simple", label: "Quick request", icon: <Zap size={16} /> },
   { id: "home", label: "All requests", icon: <Inbox size={16} /> },
-  { id: "orders", label: "Change orders", icon: <Archive size={16} /> },
-  { id: "jobs", label: "Jobs", icon: <ListChecks size={16} /> },
-  { id: "legacy", label: "Legacy editor", icon: <FolderOpen size={16} /> },
 ];
 
 export interface AppHeaderProps {

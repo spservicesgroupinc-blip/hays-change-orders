@@ -9,46 +9,23 @@
 export type View =
   | { kind: "home" }
   | { kind: "request"; id: string }
-  | { kind: "legacy"; startNew: boolean }
-  | { kind: "jobs" }
-  | { kind: "orders" }
   | { kind: "simple" };
 
-/** The five sections the app header can jump between. */
-export type NavDestination = "home" | "orders" | "jobs" | "legacy" | "simple";
+/** The sections the app header can jump between. */
+export type NavDestination = "home" | "simple";
 
 export const HOME: View = { kind: "home" };
 
 const VIEW_KEY = "hays-active-view";
 
 export function destinationToView(destination: NavDestination): View {
-  switch (destination) {
-    case "orders":
-      return { kind: "orders" };
-    case "jobs":
-      return { kind: "jobs" };
-    case "legacy":
-      return { kind: "legacy", startNew: false };
-    case "simple":
-      return { kind: "simple" };
-    default:
-      return HOME;
-  }
+  return destination === "simple" ? { kind: "simple" } : HOME;
 }
 
 export function viewToHash(view: View): string {
   switch (view.kind) {
     case "request":
       return `#/requests/${encodeURIComponent(view.id)}`;
-    case "orders":
-      return "#/orders";
-    case "jobs":
-      return "#/jobs";
-    case "legacy":
-      // Starting a new draft is deliberately not encoded in the URL: reopening
-      // or reloading the editor restores the draft in progress instead of
-      // silently creating an empty one.
-      return "#/legacy";
     case "simple":
       return "#/simple";
     default:
@@ -62,12 +39,6 @@ export function hashToView(hash: string): View | null {
   const parts = raw.split("/").filter(Boolean).map(decodeURIComponent);
   if (!parts.length) return HOME;
   switch (parts[0]) {
-    case "orders":
-      return { kind: "orders" };
-    case "jobs":
-      return { kind: "jobs" };
-    case "legacy":
-      return { kind: "legacy", startNew: false };
     case "simple":
       return { kind: "simple" };
     case "requests":
@@ -80,8 +51,6 @@ export function hashToView(hash: string): View | null {
 export function sameView(a: View, b: View): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "request" && b.kind === "request") return a.id === b.id;
-  if (a.kind === "legacy" && b.kind === "legacy")
-    return a.startNew === b.startNew;
   return true;
 }
 
@@ -89,12 +58,6 @@ export function viewLabel(view: View): string {
   switch (view.kind) {
     case "request":
       return "Change order";
-    case "orders":
-      return "Change orders";
-    case "jobs":
-      return "Jobs";
-    case "legacy":
-      return "Legacy editor";
     case "simple":
       return "Quick request";
     default:
@@ -123,12 +86,6 @@ export function readStoredView(): View {
     switch (parsed.kind) {
       case "request":
         return parsed.id ? { kind: "request", id: String(parsed.id) } : HOME;
-      case "orders":
-        return { kind: "orders" };
-      case "jobs":
-        return { kind: "jobs" };
-      case "legacy":
-        return { kind: "legacy", startNew: false };
       case "simple":
         return { kind: "simple" };
       default:
@@ -150,12 +107,7 @@ export function clearStoredView(): void {
 
 export function persistView(view: View): void {
   try {
-    // A one-shot "start a new draft" never survives a reload; the draft itself
-    // is already saved, so reopening lands on the legacy draft list instead.
-    localStorage.setItem(
-      VIEW_KEY,
-      JSON.stringify(view.kind === "legacy" ? { kind: "legacy" } : view),
-    );
+    localStorage.setItem(VIEW_KEY, JSON.stringify(view));
   } catch {
     // Storage is unavailable (private mode); routing still works for this tab.
   }

@@ -1,8 +1,6 @@
 import type {
   AttachmentKind,
-  ChangeOrderDraft,
   ChangeRequest,
-  DraftSummary,
   JobEntry,
   RequestAttachment,
   RequestStatus,
@@ -29,27 +27,6 @@ function apiFailure(
   );
 }
 
-export interface SerializedSource {
-  name: string;
-  pages: number;
-  driveFileId: string | null;
-}
-export type SerializedDraft = Omit<ChangeOrderDraft, "source"> & {
-  source: SerializedSource | null;
-};
-interface ServerSummary {
-  id: string;
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-  step: number;
-  customer: string;
-  jobNumber: string;
-  orderNumber: string;
-  changesCount: number;
-  sourceName: string;
-  hasSource: boolean;
-}
 function env(name: string): string | undefined {
   const value = (
     import.meta as unknown as {
@@ -109,100 +86,6 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
   );
   if (!payload || payload.ok === false) apiFailure(payload);
   return payload as T;
-}
-export function serializeDraft(draft: ChangeOrderDraft): SerializedDraft {
-  const { source, ...rest } = draft;
-  return {
-    ...rest,
-    source: source
-      ? {
-          name: source.name,
-          pages: source.pages,
-          driveFileId: source.driveFileId,
-        }
-      : null,
-  };
-}
-export function deserializeDraft(data: SerializedDraft): ChangeOrderDraft {
-  return {
-    ...data,
-    source: data.source
-      ? {
-          name: data.source.name,
-          pages: data.source.pages,
-          blob: null,
-          driveFileId: data.source.driveFileId,
-        }
-      : null,
-  };
-}
-function toSummary(row: ServerSummary): DraftSummary {
-  return {
-    id: row.id,
-    revision: row.revision,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    step: row.step,
-    changesCount: row.changesCount,
-    sourceName: row.sourceName,
-    hasSource: row.hasSource,
-    job: {
-      customer: row.customer,
-      jobNumber: row.jobNumber,
-      orderNumber: row.orderNumber,
-    },
-  };
-}
-export async function listDrafts(): Promise<DraftSummary[]> {
-  const data = await get<{ drafts: ServerSummary[] }>({
-    action: "list",
-  });
-  return data.drafts.map(toSummary);
-}
-export async function openDraft(id: string): Promise<ChangeOrderDraft> {
-  const data = await get<{ draft: SerializedDraft }>({
-    action: "open",
-    id,
-  });
-  return deserializeDraft(data.draft);
-}
-export async function saveDraft(draft: ChangeOrderDraft): Promise<void> {
-  await post<{ ok: true }>({
-    action: "save",
-    draft: serializeDraft(draft),
-  });
-}
-export async function deleteDraft(id: string): Promise<void> {
-  await post<{ ok: true }>({ action: "delete", id });
-}
-export async function uploadPdf(
-  name: string,
-  mimeType: string,
-  base64: string,
-  replaceFileId: string | null,
-): Promise<string> {
-  const data = await post<{ ok: true; fileId: string }>({
-    action: "uploadPdf",
-    name,
-    mimeType,
-    data: base64,
-    replaceFileId,
-  });
-  return data.fileId;
-}
-export async function fetchSourcePdf(
-  driveFileId: string,
-): Promise<{ name: string; blob: Blob }> {
-  const data = await get<{
-    ok: true;
-    name: string;
-    mimeType: string;
-    data: string;
-  }>({ action: "pdf", id: driveFileId });
-  return {
-    name: data.name,
-    blob: base64ToBlob(data.data, data.mimeType),
-  };
 }
 export function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -309,27 +192,6 @@ export async function uploadAttachment(
   });
   return data.attachment;
 }
-export interface DocumentUpload {
-  name: string;
-  mimeType: string;
-  size: number;
-  data: string;
-}
-export async function completeRequest(
-  id: string,
-  expectedRevision: number,
-  documents: DocumentUpload[],
-  mutationId: string,
-): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({
-    action: "completeRequest",
-    id,
-    expectedRevision,
-    documents,
-    mutationId,
-  });
-  return data.request;
-}
 export async function fetchAttachment(
   requestId: string,
   attachmentId: string,
@@ -341,29 +203,12 @@ export async function fetchAttachment(
   });
   return { name: data.name, blob: base64ToBlob(data.data, data.mimeType) };
 }
-export async function convertLegacyRequest(
-  id: string,
-  mutationId: string,
-): Promise<ChangeRequest> {
-  const data = await post<{ request: ChangeRequest }>({
-    action: "convertLegacyRequest",
-    id,
-    mutationId,
-  });
-  return data.request;
-}
 export async function listJobs(): Promise<JobEntry[]> {
   const data = await get<{ jobs: JobEntry[] }>({ action: "listJobs" });
   return data.jobs;
 }
-export async function importJobs(jobs: JobEntry[]): Promise<JobEntry[]> {
-  const data = await post<{ jobs: JobEntry[] }>({ action: "importJobs", jobs });
-  return data.jobs;
-}
-
 export interface DashboardData {
   requests: RequestSummary[];
-  drafts: DraftSummary[];
   jobs: JobEntry[];
 }
 // Loads everything the home dashboard and job picker need in a single Apps
@@ -373,25 +218,20 @@ export async function loadDashboard(): Promise<DashboardData> {
   try {
     const data = await get<{
       requests: RequestSummary[];
-      drafts: ServerSummary[];
       jobs: JobEntry[];
     }>({ action: "bootstrap" });
     return {
       requests: data.requests ?? [],
-      drafts: (data.drafts ?? []).map(toSummary),
       jobs: data.jobs ?? [],
     };
   } catch (error) {
-    const [requests, drafts] = await Promise.all([
-      listRequests(),
-      listDrafts(),
-    ]);
+    const [requests] = await Promise.all([listRequests()]);
     let jobs: JobEntry[] = [];
     try {
       jobs = await listJobs();
     } catch {
       // The job directory is optional; the dashboard still loads without it.
     }
-    return { requests, drafts, jobs };
+    return { requests, jobs };
   }
 }

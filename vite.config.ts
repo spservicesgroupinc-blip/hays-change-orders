@@ -20,15 +20,9 @@ export default defineConfig({
         theme_color: "#dc2626",
         shortcuts: [
           {
-            name: "Stored change orders",
-            short_name: "Change orders",
-            url: "/#/orders",
-            icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
-          },
-          {
-            name: "Job directory",
-            short_name: "Jobs",
-            url: "/#/jobs",
+            name: "Quick request",
+            short_name: "Quick request",
+            url: "/#/simple",
             icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
           },
         ],

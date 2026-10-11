@@ -3,16 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import vm from "node:vm";
-import {
-  createRequest,
-  createRequestedChange,
-  createQuote,
-  submissionErrors,
-  readyErrors,
-  requestToDraft,
-  convertLegacyDraft,
-  invalidateIntakeChanges,
-} from "../src/services/requests";
+import { createRequest, createRequestedChange } from "../src/services/requests";
 import {
   openRequest,
   saveRequest,
@@ -22,51 +13,32 @@ import {
   transitionRequest,
   uploadAttachment,
   fetchAttachment,
-  convertLegacyRequest,
   ApiError,
 } from "../src/services/storage";
-import { validDraft } from "./helpers";
-import type { ChangeRequest, RequestAttachment } from "../src/types";
+import type { ChangeRequest } from "../src/types";
 
-function validRequest(): ChangeRequest {
-  const legacy = validDraft();
-  const request = createRequest();
-  request.job = legacy.job;
-  const change = {
-    ...createRequestedChange(),
-    room: "Living room",
-    description: "Paint additional wall area",
-    reason: "Hidden damage discovered",
-  };
-  request.requestedChanges = [change];
-  request.estimate = legacy.estimate;
-  request.pricedItems = legacy.changes.map((row) => ({
-    ...row,
-    requestChangeId: change.id,
-  }));
-  request.customerScope = "Repair additional wall area.";
-  request.customerScopeEdited = true;
-  request.customerScopeConfirmed = true;
-  request.contractConfirmed = true;
-  request.estimatorName = "Sample Estimator";
-  return request;
-}
 function intakeRequest(): ChangeRequest {
-  const request = validRequest();
-  request.estimatorName = "";
-  request.pricedItems = [];
-  request.contractConfirmed = false;
-  request.customerScopeConfirmed = false;
+  const request = createRequest();
+  request.job.customer = "Sample Customer";
+  request.job.address = "123 Sample Street, Fort Wayne, IN 46808";
+  request.job.jobNumber = "FW-TEST-001";
+  request.job.projectManager = "Sample PM";
+  request.requestedChanges = [
+    {
+      ...createRequestedChange(),
+      room: "Living room",
+      description: "Paint additional wall area",
+      reason: "Hidden damage discovered",
+    },
+  ];
   return request;
 }
+
 function mockBackend() {
   const sheets = new Map<string, any>();
   const files = new Map<string, any>();
   const folders = new Map<string, any>();
-  const props = new Map([
-    ["API_KEY", "TEST-KEY"],
-    ["SPREADSHEET_ID", "sheet-1"],
-  ]);
+  const props = new Map([["SPREADSHEET_ID", "sheet-1"]]);
   let counter = 0,
     locked = false,
     failNextWrite = false;
@@ -135,12 +107,6 @@ function mockBackend() {
       setTrashed: (trashed: boolean) => {
         result.trashed = trashed;
       },
-      setBlob: (value: any) => {
-        result.bytes = value.bytes;
-        result.mimeType = value.mimeType;
-      },
-      makeCopy: (name: string, destination: any) =>
-        destination.createFile(blob(result.bytes, result.mimeType, name)),
     };
     files.set(id, result);
     return result;
@@ -260,24 +226,15 @@ function mockBackend() {
     folders,
     post: (body: any) =>
       JSON.parse(
-        sandbox.doPost({
-          postData: { contents: JSON.stringify({ ...body, key: "TEST-KEY" }) },
-        }).text,
+        sandbox.doPost({ postData: { contents: JSON.stringify(body) } }).text,
       ),
-    get: (parameter: any) =>
-      JSON.parse(
-        sandbox.doGet({ parameter: { ...parameter, key: "TEST-KEY" } }).text,
-      ),
+    get: (parameter: any) => JSON.parse(sandbox.doGet({ parameter }).text),
     failWrite: () => {
       failNextWrite = true;
     },
     busy: (value: boolean) => {
       locked = value;
     },
-    legacyFile: () =>
-      root.createFile(
-        blob("%PDF-1.4\nlegacy", "application/pdf", "legacy.pdf"),
-      ),
     installFetch: () => {
       const original = globalThis.fetch;
       globalThis.fetch = (async (
@@ -288,20 +245,12 @@ function mockBackend() {
         const output = init?.body
           ? JSON.parse(
               sandbox.doPost({
-                postData: {
-                  contents: JSON.stringify({
-                    ...JSON.parse(String(init.body)),
-                    key: "TEST-KEY",
-                  }),
-                },
+                postData: { contents: String(init.body) },
               }).text,
             )
           : JSON.parse(
               sandbox.doGet({
-                parameter: {
-                  ...Object.fromEntries(url.searchParams),
-                  key: "TEST-KEY",
-                },
+                parameter: Object.fromEntries(url.searchParams),
               }).text,
             );
         return new Response(JSON.stringify(output), {
@@ -328,154 +277,35 @@ function save(
     mutationId,
   });
 }
-function upload(
-  backend: ReturnType<typeof mockBackend>,
-  requestId: string,
-  attachmentId = randomUUID(),
-  mutationId = randomUUID(),
-) {
-  const data = "%PDF-1.4\ntest";
-  return backend.post({
-    action: "uploadAttachment",
-    requestId,
-    attachmentId,
-    mutationId,
-    file: {
-      name: "quote.pdf",
-      mimeType: "application/pdf",
-      kind: "quote",
-      size: Buffer.byteLength(data),
-      data: Buffer.from(data).toString("base64"),
-    },
-  });
-}
 
-test("PM submissions are permissive — any fields may be missing", () => {
-  const request = intakeRequest();
-  request.job.jobNumber = "";
-  request.job.customer = "";
-  request.job.address = "";
-  request.job.projectManager = "";
-  request.requestedChanges[0].room = "";
-  request.requestedChanges[0].description = "";
-  request.requestedChanges[0].reason = "";
-  request.quotes = [{ ...createQuote(), cost: "-2" }];
-  assert.deepEqual(submissionErrors(request), []);
-  assert.deepEqual(submissionErrors(createRequest()), []);
-});
-test("readiness never blocks, however little data has been entered", () => {
-  assert.deepEqual(readyErrors(createRequest()), []);
-  assert.deepEqual(readyErrors(validRequest()), []);
-  const request = validRequest();
-  request.estimatorName = "";
-  request.contractConfirmed = false;
-  request.customerScopeConfirmed = false;
-  request.job.customer = "";
-  request.job.date = "2026-02-31";
-  request.job.originalContract = "";
-  request.job.addedDays = "";
-  request.pricedItems[0].pricingConfirmed = false;
-  request.pricedItems[0].original!.reviewed = false;
-  request.pricedItems[0].requestChangeId = "";
-  request.pricedItems.push({
-    ...structuredClone(request.pricedItems[0]),
-    id: randomUUID(),
-  });
-  request.requestedChanges.push({
-    ...createRequestedChange(),
-    room: "Kitchen",
-    description: "Remove cabinet",
-    reason: "Damage",
-  });
-  assert.deepEqual(readyErrors(request), []);
-});
-test("customer draft projection does not contain vendor costs, internal notes or source text", () => {
-  const request = validRequest();
-  request.quotes = [
-    { ...createQuote(), notes: "SECRET_VENDOR_NOTES", cost: "91234.56" },
-  ];
-  request.requestedChanges[0].reason = "SECRET_PM_REASON";
-  request.requestedChanges[0].materials = "SECRET_PM_MATERIAL";
-  request.pricedItems[0].original!.rawText = "SECRET_SOURCE_TEXT";
-  const draft = requestToDraft(request);
-  const output = JSON.stringify(draft);
-  assert.doesNotMatch(output, /SECRET|91234\.56|requestChangeId|quotes/);
-  assert.equal(draft.changes[0].reason, request.pricedItems[0].reason);
-});
-test("intake changes invalidate linked pricing, while quotes spanning areas invalidate both", () => {
-  const before = validRequest();
-  const second = {
-    ...createRequestedChange(),
-    room: "Kitchen",
-    description: "Repair",
-    reason: "Damage",
-  };
-  before.requestedChanges.push(second);
-  before.pricedItems.push({
-    ...structuredClone(before.pricedItems[0]),
-    id: randomUUID(),
-    original: null,
-    requestChangeId: second.id,
-  });
-  const after = structuredClone(before);
-  after.requestedChanges[0].measurements = "20 SF";
-  const invalidated = invalidateIntakeChanges(before, after);
-  assert.equal(invalidated.pricedItems[0].pricingConfirmed, false);
-  assert.equal(invalidated.pricedItems[1].pricingConfirmed, true);
-  assert.equal(invalidated.contractConfirmed, false);
-  const quote = {
-    ...createQuote(),
-    changeIds: before.requestedChanges.map((change) => change.id),
-    cost: "100",
-  };
-  before.quotes = [quote];
-  const quoteEdit = structuredClone(before);
-  quoteEdit.quotes[0].cost = "200";
-  assert.ok(
-    invalidateIntakeChanges(before, quoteEdit).pricedItems.every(
-      (row) => !row.pricingConfirmed,
-    ),
-  );
-  before.status = "ready";
-  assert.equal(invalidateIntakeChanges(before, after), before);
-});
-test("legacy conversion carries prior pricing unconfirmed and retains original data", () => {
-  const legacy = validDraft();
-  const frozen = JSON.stringify(legacy);
-  const request = convertLegacyDraft(legacy);
-  assert.equal(request.legacyDraftId, legacy.id);
-  assert.notEqual(request.id, legacy.id);
-  assert.equal(
-    request.pricedItems[0].requestChangeId,
-    request.requestedChanges[0].id,
-  );
-  assert.equal(request.pricedItems[0].rate, legacy.changes[0].rate);
-  assert.equal(request.pricedItems[0].pricingConfirmed, false);
-  assert.equal(JSON.stringify(legacy), frozen);
-});
-test("actual Apps Script stores large JSON in Drive and small searchable queue rows", () => {
+test("a request saves, lists and opens through the mocked Apps Script", () => {
   const backend = mockBackend();
   const request = intakeRequest();
-  request.extractionWarnings = ["x".repeat(170000)];
   const result = save(backend, request);
   assert.equal(result.ok, true);
   assert.equal(result.request.revision, 1);
-  const row = backend.sheets.get("Requests").rows[1];
-  assert.ok(
-    row.every(
-      (value: any) => typeof value !== "string" || value.length < 50000,
-    ),
-  );
-  assert.equal(typeof row[13], "string");
-  const opened = backend.get({ action: "openRequest", id: request.id });
-  assert.equal(opened.request.extractionWarnings[0].length, 170000);
+  assert.equal(result.request.job.customer, "Sample Customer");
+
   const listed = backend.get({ action: "listRequests" });
+  assert.equal(listed.requests.length, 1);
+  assert.equal(listed.requests[0].job.projectManager, "Sample PM");
+  assert.equal(listed.requests[0].changesCount, 1);
+
+  const opened = backend.get({ action: "openRequest", id: request.id });
   assert.equal(
-    listed.requests[0].job.projectManager,
-    request.job.projectManager,
+    opened.request.requestedChanges[0].description,
+    "Paint additional wall area",
   );
 });
-test("exact server revisions reject equal-revision competing saves and recognize retries", () => {
+
+test("new requests must begin as empty-attachment drafts", () => {
+  const backend = mockBackend();
+  const request = intakeRequest();
+  request.status = "submitted";
+  assert.equal(save(backend, request).code, "VALIDATION");
+});
+
+test("exact revisions reject competing saves and recognize retries", () => {
   const backend = mockBackend();
   const initial = save(backend, intakeRequest()).request;
   const first = structuredClone(initial);
@@ -489,8 +319,8 @@ test("exact server revisions reject equal-revision competing saves and recognize
   const retried = save(backend, first, id, 1);
   assert.equal(retried.request.revision, 2);
   assert.equal(retried.request.requestedChanges[0].description, "Winner");
-  assert.equal(backend.sheets.get("Requests").rows[1][14] !== "", true);
 });
+
 test("failed index write keeps the old snapshot authoritative and releases the lock", () => {
   const backend = mockBackend();
   const initial = save(backend, intakeRequest()).request;
@@ -508,7 +338,8 @@ test("failed index write keeps the old snapshot authoritative and releases the l
   assert.equal(save(backend, next).code, "BUSY");
   backend.busy(false);
 });
-test("submitted queue claims have one winner and requests for information return to the same estimator", () => {
+
+test("claims have one winner and information requests return to the same estimator", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
   request = backend.post({
@@ -521,6 +352,7 @@ test("submitted queue claims have one winner and requests for information return
   }).request;
   assert.equal(request.status, "submitted");
   assert.equal(save(backend, request).code, "STATE");
+
   const expected = request.revision;
   request = backend.post({
     action: "claimRequest",
@@ -540,6 +372,7 @@ test("submitted queue claims have one winner and requests for information return
     }).code,
     "CONFLICT",
   );
+
   assert.equal(
     backend.post({
       action: "transitionRequest",
@@ -551,6 +384,7 @@ test("submitted queue claims have one winner and requests for information return
     }).code,
     "VALIDATION",
   );
+
   request = backend.post({
     action: "transitionRequest",
     id: request.id,
@@ -559,7 +393,13 @@ test("submitted queue claims have one winner and requests for information return
     question: "What is the measured area?",
     mutationId: randomUUID(),
   }).request;
-  request.requestedChanges[0].measurements = "20 SF";
+  assert.equal(request.status, "needs_information");
+
+  // The PM adds the information and resubmits; the original estimator keeps it.
+  request.requestedChanges = [
+    ...request.requestedChanges,
+    { ...createRequestedChange(), description: "120 square feet" },
+  ];
   request = save(backend, request).request;
   request = backend.post({
     action: "transitionRequest",
@@ -573,7 +413,8 @@ test("submitted queue claims have one winner and requests for information return
   assert.equal(request.estimatorName, "Estimator A");
   assert.equal(request.informationQuestion, "");
 });
-test("server accepts readiness at any point and makes Ready records immutable", () => {
+
+test("an estimator marks an in-review request complete and it becomes immutable", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
   request = backend.post({
@@ -591,20 +432,15 @@ test("server accepts readiness at any point and makes Ready records immutable", 
     estimatorName: "Sample Estimator",
     mutationId: randomUUID(),
   }).request;
-  const transition = () =>
-    backend.post({
-      action: "transitionRequest",
-      id: request.id,
-      expectedRevision: request.revision,
-      status: "ready",
-      question: "",
-      mutationId: randomUUID(),
-    });
-  // Nothing is confirmed, priced, or filled in beyond the claim itself.
-  assert.equal(request.pricedItems.length, 0);
-  assert.equal(request.contractConfirmed, false);
-  request = transition().request;
-  assert.equal(request.status, "ready");
+  request = backend.post({
+    action: "transitionRequest",
+    id: request.id,
+    expectedRevision: request.revision,
+    status: "completed",
+    question: "",
+    mutationId: randomUUID(),
+  }).request;
+  assert.equal(request.status, "completed");
   assert.equal(save(backend, request).code, "STATE");
   assert.equal(
     backend.post({
@@ -618,16 +454,32 @@ test("server accepts readiness at any point and makes Ready records immutable", 
     "STATE",
   );
 });
-test("staged attachment retry is idempotent and linking is ownership-checked", () => {
+
+test("attachment upload retries are idempotent and ownership is checked", () => {
   const backend = mockBackend();
   let request = save(backend, intakeRequest()).request;
   const id = randomUUID(),
     mutation = randomUUID();
-  const uploaded = upload(backend, request.id, id, mutation);
+  const data = "%PDF-1.4\ntest";
+  const upload = (attachmentId: string, mutationId: string) =>
+    backend.post({
+      action: "uploadAttachment",
+      requestId: request.id,
+      attachmentId,
+      mutationId,
+      file: {
+        name: "photo.pdf",
+        mimeType: "application/pdf",
+        kind: "document",
+        size: Buffer.byteLength(data),
+        data: Buffer.from(data).toString("base64"),
+      },
+    });
+  const uploaded = upload(id, mutation);
   assert.equal(uploaded.ok, true);
-  const attachment = uploaded.attachment as RequestAttachment;
+  const attachment = uploaded.attachment;
   assert.equal(
-    upload(backend, request.id, id, mutation).attachment.driveFileId,
+    upload(id, mutation).attachment.driveFileId,
     attachment.driveFileId,
   );
   assert.equal(
@@ -646,26 +498,14 @@ test("staged attachment retry is idempotent and linking is ownership-checked", (
       requestId: request.id,
       attachmentId: id,
     }).name,
-    "quote.pdf",
+    "photo.pdf",
   );
   const other = save(backend, intakeRequest()).request;
   other.attachments = [attachment];
   assert.equal(save(backend, other).code, "VALIDATION");
-  const replacement = upload(backend, request.id).attachment;
-  request.attachments = [replacement];
-  backend.failWrite();
-  assert.equal(save(backend, request).ok, false);
-  assert.equal(backend.files.get(attachment.driveFileId).trashed, false);
-  assert.equal(
-    backend.get({
-      action: "fetchAttachment",
-      requestId: request.id,
-      attachmentId: attachment.id,
-    }).ok,
-    true,
-  );
 });
-test("uploads validate actual bytes and failed/unlinked files never become record attachments", () => {
+
+test("uploads validate actual bytes and never become record attachments", () => {
   const backend = mockBackend();
   const request = save(backend, intakeRequest()).request;
   const response = backend.post({
@@ -676,7 +516,7 @@ test("uploads validate actual bytes and failed/unlinked files never become recor
     file: {
       name: "bad.pdf",
       mimeType: "application/pdf",
-      kind: "quote",
+      kind: "document",
       size: 3,
       data: Buffer.from("bad").toString("base64"),
     },
@@ -688,40 +528,17 @@ test("uploads validate actual bytes and failed/unlinked files never become recor
     0,
   );
 });
-test("backend legacy conversion physically copies PDFs, keeps pricing and preserves original rows/files", () => {
+
+test("bootstrap returns requests and jobs in one round-trip", () => {
   const backend = mockBackend();
-  const old = validDraft();
-  const pdf = backend.legacyFile();
-  old.source = {
-    name: "legacy.pdf",
-    pages: 1,
-    blob: null,
-    driveFileId: pdf.getId(),
-  };
-  backend.post({ action: "save", draft: old });
-  const before = JSON.stringify(backend.sheets.get("Drafts").rows);
-  const mutationId = randomUUID();
-  const converted = backend.post({
-    action: "convertLegacyRequest",
-    id: old.id,
-    mutationId,
-  });
-  assert.equal(converted.ok, true);
-  assert.notEqual(converted.request.attachments[0].driveFileId, pdf.getId());
-  assert.equal(converted.request.pricedItems[0].pricingConfirmed, false);
-  assert.equal(
-    converted.request.pricedItems[0].requestChangeId,
-    converted.request.requestedChanges[0].id,
-  );
-  assert.equal(JSON.stringify(backend.sheets.get("Drafts").rows), before);
-  assert.equal(pdf.trashed, false);
-  assert.equal(
-    backend.post({ action: "convertLegacyRequest", id: old.id, mutationId })
-      .request.id,
-    converted.request.id,
-  );
+  save(backend, intakeRequest());
+  const result = backend.get({ action: "bootstrap" });
+  assert.equal(result.ok, true);
+  assert.equal(result.requests.length, 1);
+  assert.ok(Array.isArray(result.jobs));
 });
-test("frontend request APIs round-trip through actual mocked Code.gs and surface structured conflicts", async () => {
+
+test("frontend request APIs round-trip through Code.gs and surface conflicts", async () => {
   const backend = mockBackend();
   const restore = backend.installFetch();
   try {
@@ -743,7 +560,7 @@ test("frontend request APIs round-trip through actual mocked Code.gs and surface
       {
         name: "quote.pdf",
         mimeType: "application/pdf",
-        kind: "quote",
+        kind: "document",
         size: Buffer.byteLength(bytes),
         data: Buffer.from(bytes).toString("base64"),
       },
@@ -768,62 +585,30 @@ test("frontend request APIs round-trip through actual mocked Code.gs and surface
       randomUUID(),
     );
     assert.equal(claimed.status, "in_review");
-    const legacy = validDraft();
-    backend.post({ action: "save", draft: legacy });
-    assert.equal(
-      (await convertLegacyRequest(legacy.id, randomUUID())).legacyDraftId,
-      legacy.id,
+    const completed = await transitionRequest(
+      claimed.id,
+      claimed.revision,
+      "completed",
+      "",
+      randomUUID(),
     );
+    assert.equal(completed.status, "completed");
   } finally {
     restore();
   }
 });
 
-test("bootstrap returns requests, drafts and jobs in one round-trip", () => {
+test("loadDashboard loads requests and jobs and falls back when bootstrap is missing", async () => {
   const backend = mockBackend();
   save(backend, intakeRequest());
-  backend.post({ action: "save", draft: validDraft() });
-  backend.post({
-    action: "importJobs",
-    jobs: [
-      {
-        id: "j1",
-        jobNumber: "F-26-0366-R",
-        customer: "Sample Customer",
-        address: "123 Sample St, Fort Wayne, IN 46808",
-        projectManager: "Sample PM",
-        estimator: "Sample Estimator",
-        status: "Work in Progress",
-        customerPhone: "",
-        customerEmail: "",
-        active: true,
-        updatedAt: "",
-      },
-    ],
-  });
-  const result = backend.get({ action: "bootstrap" });
-  assert.equal(result.ok, true);
-  assert.equal(result.requests.length, 1);
-  assert.equal(result.drafts.length, 1);
-  assert.equal(result.jobs.length, 1);
-  assert.equal(result.jobs[0].jobNumber, "F-26-0366-R");
-});
-
-test("loadDashboard loads all three lists and falls back when bootstrap is missing", async () => {
-  const backend = mockBackend();
-  save(backend, intakeRequest());
-  backend.post({ action: "save", draft: validDraft() });
   const restore = backend.installFetch();
   try {
     const data = await loadDashboard();
     assert.equal(data.requests.length, 1);
-    assert.equal(data.drafts.length, 1);
     assert.deepEqual(data.jobs, []);
   } finally {
     restore();
   }
-  // Simulate a pre-bootstrap deployment, then verify the fallback path still
-  // returns requests and drafts without the combined endpoint.
   const original = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -835,7 +620,8 @@ test("loadDashboard loads all three lists and falls back when bootstrap is missi
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    if (action === "bootstrap") return reply({ ok: false, error: "Unknown action." });
+    if (action === "bootstrap")
+      return reply({ ok: false, error: "Unknown action." });
     if (action === "listRequests")
       return reply({
         ok: true,
@@ -859,36 +645,16 @@ test("loadDashboard loads all three lists and falls back when bootstrap is missi
           },
         ],
       });
-    if (action === "list")
-      return reply({
-        ok: true,
-        drafts: [
-          {
-            id: "d1",
-            revision: 1,
-            createdAt: "",
-            updatedAt: "",
-            step: 0,
-            customer: "Fallback",
-            jobNumber: "",
-            orderNumber: "",
-            changesCount: 0,
-            sourceName: "",
-            hasSource: false,
-          },
-        ],
-      });
-    if (action === "listJobs") return reply({ ok: false, error: "Unknown action." });
+    if (action === "listJobs")
+      return reply({ ok: false, error: "Unknown action." });
     return reply({ ok: false, error: "Unknown action." });
   }) as typeof fetch;
   try {
     const data = await loadDashboard();
     assert.equal(data.requests[0].job.customer, "Fallback");
-    assert.equal(data.drafts[0].job.customer, "Fallback");
     assert.deepEqual(data.jobs, []);
     assert.ok(calls.includes("bootstrap"));
     assert.ok(calls.includes("listRequests"));
-    assert.ok(calls.includes("list"));
     assert.ok(calls.includes("listJobs"));
   } finally {
     globalThis.fetch = original;

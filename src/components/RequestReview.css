@@ -1,0 +1,66 @@
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.review-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.review-card p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.review-card-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: #dc2626;
+}
+
+.review-field {
+  margin-top: 4px;
+}
+
+.review-question {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #dc2626;
+  background: #fef2f2;
+  color: #1f2937;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.review-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-done {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.review-done .review-card-icon {
+  color: #16a34a;
+  background: #dcfce7;
+}
