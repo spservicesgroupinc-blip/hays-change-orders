@@ -51,7 +51,7 @@ export default defineConfig({
         // Only hashed assets are precached. The document is handled by the
         // network-first route below so a shell cached by an older deployment can
         // never ask for files the newest deployment has already pruned.
-        globPatterns: ["**/*.{js,css,svg,png,ico,woff2}"],
+        globPatterns: ["**/*.{js,css,svg,png,ico,woff2,ttf}"],
         cleanupOutdatedCaches: true,
         navigateFallback: null,
         runtimeCaching: [

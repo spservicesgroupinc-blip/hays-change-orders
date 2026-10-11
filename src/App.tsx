@@ -56,6 +56,8 @@ import RequestReview from "./components/RequestReview";
 import PdfViewer from "./components/PdfViewer";
 import InstallApp from "./components/InstallApp";
 import "./app.css";
+import summaryFontUrl from "./assets/fonts/NotoSans-Regular.ttf?url";
+import { downloadBlob } from "./services/download";
 
 const STATUS_LABELS: Record<RequestStatus, string> = {
   draft: "Draft",
@@ -190,6 +192,8 @@ export default function App() {
   // closes it. The two flags keep that bookkeeping off the routing path.
   const previewEntry = useRef(false);
   const suppressPop = useRef(false);
+  const leaveGuard = useRef<(() => boolean) | null>(null);
+  const registerLeaveGuard = useCallback((guard: (() => boolean) | null) => { leaveGuard.current = guard; }, []);
 
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -228,6 +232,7 @@ export default function App() {
    */
   const goTo = useCallback(
     (next: View, mode: "push" | "replace" = "push") => {
+      if (!sameView(next, viewRef.current) && leaveGuard.current && !leaveGuard.current()) return;
       navigateTo(next, mode);
       if (next.kind !== "request") {
         setRequest(null);
@@ -293,6 +298,11 @@ export default function App() {
       }
       const next = hashToView(window.location.hash) ?? HOME;
       if (sameView(next, viewRef.current)) return;
+      if (leaveGuard.current && !leaveGuard.current()) {
+        window.history.pushState(null, "", viewToHash(viewRef.current));
+        return;
+      }
+      leaveGuard.current = null;
       if (next.kind === "request") {
         setRequest(null);
         navigateTo(next, "replace");
@@ -441,7 +451,8 @@ export default function App() {
 
   async function previewAttachment(attachment: RequestAttachment) {
     if (!request) return;
-    setBusy("Opening file…");
+    setBusy(`Opening ${attachment.name}…`);
+    setSaveError("");
     try {
       const result = await fetchAttachment(request.id, attachment.id);
       setPreview({ name: result.name, blob: result.blob });
@@ -460,22 +471,31 @@ export default function App() {
 
   async function downloadAttachment(attachment: RequestAttachment) {
     if (!request) return;
-    setBusy("Downloading…");
+    setBusy(`Downloading ${attachment.name}…`);
+    setSaveError("");
     try {
       const result = await fetchAttachment(request.id, attachment.id);
-      const url = URL.createObjectURL(result.blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(result.blob, result.name);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy("");
     }
+  }
+
+  async function downloadSummary() {
+    if (!request || busy) return;
+    setBusy("Preparing summary PDF…");
+    setSaveError("");
+    try {
+      const [{ generateRequestPdf, summaryFilename }, response] = await Promise.all([
+        import("./services/requestPdf"), fetch(summaryFontUrl),
+      ]);
+      if (!response.ok) throw new Error("The PDF font could not be loaded. Try downloading again.");
+      const bytes = await generateRequestPdf(request, new Uint8Array(await response.arrayBuffer()));
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), summaryFilename(request));
+    } catch (error) { setSaveError(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(""); }
   }
 
   const statusCounts = useMemo(() => {
@@ -593,7 +613,7 @@ export default function App() {
             <div className="storage-error" role="alert">
               <X size={18} />
               <span>
-                <strong>The request could not be updated.</strong> {saveError}
+                <strong>The action could not be completed.</strong> {saveError} Try again using the same action.
               </span>
               <button className="button small" onClick={() => setSaveError("")}>
                 Dismiss
@@ -602,6 +622,7 @@ export default function App() {
           ) : null}
           {request ? (
             <RequestReview
+              key={request.id}
               request={request}
               busy={busy}
               onBack={goHome}
@@ -611,6 +632,11 @@ export default function App() {
               onComplete={() => void markComplete()}
               onRequestInfo={(question) => void requestInfo(question)}
               onSendResponse={(response) => void sendResponse(response)}
+              onDownloadSummary={() => void downloadSummary()}
+              onSaved={(saved) => { setRequest(saved); setSaveError(""); void refresh(); }}
+              onReload={() => openRequest(request.id)}
+              onBusy={setBusy}
+              onLeaveGuard={registerLeaveGuard}
             />
           ) : openError ? (
             <div className="empty">

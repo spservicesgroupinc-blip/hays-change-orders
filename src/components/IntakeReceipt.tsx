@@ -1,5 +1,6 @@
 import { CheckCircle2, Download, Eye, FileText, ImageIcon } from "lucide-react";
 import type { ChangeRequest, RequestAttachment } from "../types";
+import { contractAmounts } from "../services/contract";
 import "./IntakeReceipt.css";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -21,11 +22,14 @@ export default function IntakeReceipt({
   request,
   onPreview,
   onDownload,
+  busy = "",
 }: {
   request: ChangeRequest;
   onPreview: (attachment: RequestAttachment) => void;
   onDownload: (attachment: RequestAttachment) => void;
+  busy?: string;
 }) {
+  const amounts = contractAmounts(request.job);
   return (
     <div className="receipt">
       <div className="receipt-banner">
@@ -58,6 +62,8 @@ export default function IntakeReceipt({
             <dt>Customer</dt>
             <dd>{request.job.customer || "—"}</dd>
           </div>
+          <div><dt>Customer phone</dt><dd>{request.job.customerPhone || "Not provided"}</dd></div>
+          <div><dt>Customer email</dt><dd>{request.job.customerEmail || "Not provided"}</dd></div>
           <div>
             <dt>Property address</dt>
             <dd>{request.job.address || "—"}</dd>
@@ -66,6 +72,9 @@ export default function IntakeReceipt({
             <dt>Project manager</dt>
             <dd>{request.job.projectManager || "—"}</dd>
           </div>
+          <div><dt>Original contract</dt><dd>{amounts.original}</dd></div>
+          <div><dt>Previous authorized changes</dt><dd>{amounts.previous}</dd></div>
+          <div className="receipt-total"><dt>Total contract price</dt><dd>{amounts.total}</dd></div>
         </dl>
       </section>
 
@@ -115,6 +124,8 @@ export default function IntakeReceipt({
                 <button
                   type="button"
                   className="button small"
+                  aria-label={`Preview ${attachment.name}`}
+                  disabled={Boolean(busy)}
                   onClick={() => onPreview(attachment)}
                 >
                   <Eye size={15} />
@@ -123,6 +134,8 @@ export default function IntakeReceipt({
                 <button
                   type="button"
                   className="button small"
+                  aria-label={`Download ${attachment.name}`}
+                  disabled={Boolean(busy)}
                   onClick={() => onDownload(attachment)}
                 >
                   <Download size={15} />

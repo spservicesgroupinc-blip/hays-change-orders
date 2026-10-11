@@ -2,11 +2,14 @@ import { useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  Download,
+  Pencil,
   Send,
   TriangleAlert,
 } from "lucide-react";
 import type { ChangeRequest, RequestAttachment } from "../types";
 import IntakeReceipt from "./IntakeReceipt";
+import RequestEditor from "./RequestEditor";
 import "./RequestReview.css";
 
 export default function RequestReview({
@@ -19,6 +22,11 @@ export default function RequestReview({
   onComplete,
   onRequestInfo,
   onSendResponse,
+  onDownloadSummary,
+  onSaved,
+  onReload,
+  onBusy,
+  onLeaveGuard,
 }: {
   request: ChangeRequest;
   busy: string;
@@ -29,25 +37,37 @@ export default function RequestReview({
   onComplete: () => void;
   onRequestInfo: (question: string) => void;
   onSendResponse: (response: string) => void;
+  onDownloadSummary: () => void;
+  onSaved: (request: ChangeRequest) => void;
+  onReload: () => Promise<ChangeRequest>;
+  onBusy: (message: string) => void;
+  onLeaveGuard: (guard: (() => boolean) | null) => void;
 }) {
   const [claimName, setClaimName] = useState("");
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [response, setResponse] = useState("");
+  const [editing, setEditing] = useState(false);
 
   return (
     <div className="review">
-      <button className="back-link" onClick={onBack}>
+      <button className="back-link" onClick={onBack} disabled={Boolean(busy)}>
         <ArrowLeft size={15} />
         Back to requests
       </button>
 
-      <IntakeReceipt
-        request={request}
-        onPreview={onPreview}
-        onDownload={onDownload}
-      />
+      <div className="review-actions">
+        {!editing && request.status !== "completed" ? (
+          <button className="button" disabled={Boolean(busy)} onClick={() => setEditing(true)}><Pencil size={16} />Edit request</button>
+        ) : null}
+        <button className="button" disabled={editing || Boolean(busy)} onClick={onDownloadSummary}><Download size={16} />Download summary PDF</button>
+      </div>
+      {busy ? <p className="receipt-caption" role="status">{busy}</p> : null}
+      {editing ? <RequestEditor request={request} onSaved={saved => { setEditing(false); onSaved(saved); }}
+        onCancel={() => setEditing(false)} onReload={onReload} onBusy={onBusy} onLeaveGuard={onLeaveGuard} /> :
+        <IntakeReceipt request={request} busy={busy} onPreview={onPreview} onDownload={onDownload} />}
 
+      <fieldset className="review-workflow" disabled={editing || Boolean(busy)}>
       {request.status === "submitted" ? (
         <div className="review-card">
           <div className="review-card-icon">
@@ -171,6 +191,7 @@ export default function RequestReview({
           </p>
         </div>
       )}
+      </fieldset>
     </div>
   );
 }

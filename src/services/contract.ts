@@ -14,12 +14,14 @@ export function formatCents(value: bigint): string {
 }
 
 export function contractAmounts(job: Pick<JobDetails, "originalContract" | "previousChanges">) {
-  const original = moneyCents(job.originalContract);
-  const previous = job.previousChanges.trim() ? moneyCents(job.previousChanges) : 0n;
+  const originalText = job.originalContract ?? "";
+  const previousText = job.previousChanges ?? "";
+  const original = moneyCents(originalText);
+  const previous = previousText.trim() ? moneyCents(previousText) : 0n;
   return {
-    original: original !== null ? formatCents(original) : job.originalContract.trim() ? "Unavailable" : "Not provided",
+    original: original !== null ? formatCents(original) : originalText.trim() ? "Unavailable" : "Not provided",
     previous: previous !== null ? formatCents(previous) : "Unavailable",
     total: original !== null && previous !== null ? formatCents(original + previous)
-      : !job.originalContract.trim() && previous !== null ? "Not provided" : "Unavailable",
+      : !originalText.trim() && previous !== null ? "Not provided" : "Unavailable",
   };
 }

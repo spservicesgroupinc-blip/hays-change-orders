@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.js";
+import { getDocument } from "pdfjs-dist";
 
 /**
  * The review page is where an estimator receives a quick request: they read
