@@ -74,8 +74,14 @@
   overflow-wrap: anywhere;
 }
 
-.receipt-total { grid-column: 1 / -1; border-top: 1px solid #e5e7eb; padding-top: 12px; }
-.receipt-total dd { font-size: 20px; }
+.receipt-total {
+  grid-column: 1 / -1;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+.receipt-total dd {
+  font-size: 20px;
+}
 
 .receipt-notes {
   display: flex;
@@ -151,8 +157,12 @@
 }
 
 @media (max-width: 560px) {
-  .receipt-file { flex-wrap: wrap; }
-  .receipt-file-main { flex-basis: calc(100% - 44px); }
+  .receipt-file {
+    flex-wrap: wrap;
+  }
+  .receipt-file-main {
+    flex-basis: calc(100% - 44px);
+  }
   .receipt-job {
     grid-template-columns: 1fr;
   }

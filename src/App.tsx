@@ -158,7 +158,9 @@ function AttachmentPreview({
         </div>
         <div className="shell-modal-body">
           {preview.blob.type.startsWith("image/") ? (
-            url ? <img src={url} alt={preview.name} /> : null
+            url ? (
+              <img src={url} alt={preview.name} />
+            ) : null
           ) : (
             <PdfViewer blob={preview.blob} label={preview.name} />
           )}
@@ -193,7 +195,9 @@ export default function App() {
   const previewEntry = useRef(false);
   const suppressPop = useRef(false);
   const leaveGuard = useRef<(() => boolean) | null>(null);
-  const registerLeaveGuard = useCallback((guard: (() => boolean) | null) => { leaveGuard.current = guard; }, []);
+  const registerLeaveGuard = useCallback((guard: (() => boolean) | null) => {
+    leaveGuard.current = guard;
+  }, []);
 
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -232,7 +236,12 @@ export default function App() {
    */
   const goTo = useCallback(
     (next: View, mode: "push" | "replace" = "push") => {
-      if (!sameView(next, viewRef.current) && leaveGuard.current && !leaveGuard.current()) return;
+      if (
+        !sameView(next, viewRef.current) &&
+        leaveGuard.current &&
+        !leaveGuard.current()
+      )
+        return;
       navigateTo(next, mode);
       if (next.kind !== "request") {
         setRequest(null);
@@ -488,14 +497,28 @@ export default function App() {
     setBusy("Preparing summary PDF…");
     setSaveError("");
     try {
-      const [{ generateRequestPdf, summaryFilename }, response] = await Promise.all([
-        import("./services/requestPdf"), fetch(summaryFontUrl),
-      ]);
-      if (!response.ok) throw new Error("The PDF font could not be loaded. Try downloading again.");
-      const bytes = await generateRequestPdf(request, new Uint8Array(await response.arrayBuffer()));
-      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), summaryFilename(request));
-    } catch (error) { setSaveError(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(""); }
+      const [{ generateRequestPdf, summaryFilename }, response] =
+        await Promise.all([
+          import("./services/requestPdf"),
+          fetch(summaryFontUrl),
+        ]);
+      if (!response.ok)
+        throw new Error(
+          "The PDF font could not be loaded. Try downloading again.",
+        );
+      const bytes = await generateRequestPdf(
+        request,
+        new Uint8Array(await response.arrayBuffer()),
+      );
+      downloadBlob(
+        new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
+        summaryFilename(request),
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy("");
+    }
   }
 
   const statusCounts = useMemo(() => {
@@ -613,7 +636,8 @@ export default function App() {
             <div className="storage-error" role="alert">
               <X size={18} />
               <span>
-                <strong>The action could not be completed.</strong> {saveError} Try again using the same action.
+                <strong>The action could not be completed.</strong> {saveError}{" "}
+                Try again using the same action.
               </span>
               <button className="button small" onClick={() => setSaveError("")}>
                 Dismiss
@@ -633,7 +657,11 @@ export default function App() {
               onRequestInfo={(question) => void requestInfo(question)}
               onSendResponse={(response) => void sendResponse(response)}
               onDownloadSummary={() => void downloadSummary()}
-              onSaved={(saved) => { setRequest(saved); setSaveError(""); void refresh(); }}
+              onSaved={(saved) => {
+                setRequest(saved);
+                setSaveError("");
+                void refresh();
+              }}
               onReload={() => openRequest(request.id)}
               onBusy={setBusy}
               onLeaveGuard={registerLeaveGuard}
@@ -786,7 +814,10 @@ export default function App() {
                   Requests submitted by project managers land here for the
                   estimating team to review and complete.
                 </p>
-                <button className="button" onClick={() => goTo({ kind: "simple" })}>
+                <button
+                  className="button"
+                  onClick={() => goTo({ kind: "simple" })}
+                >
                   <Plus size={16} />
                   Create your first request
                 </button>

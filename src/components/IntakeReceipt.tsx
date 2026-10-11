@@ -62,8 +62,14 @@ export default function IntakeReceipt({
             <dt>Customer</dt>
             <dd>{request.job.customer || "—"}</dd>
           </div>
-          <div><dt>Customer phone</dt><dd>{request.job.customerPhone || "Not provided"}</dd></div>
-          <div><dt>Customer email</dt><dd>{request.job.customerEmail || "Not provided"}</dd></div>
+          <div>
+            <dt>Customer phone</dt>
+            <dd>{request.job.customerPhone || "Not provided"}</dd>
+          </div>
+          <div>
+            <dt>Customer email</dt>
+            <dd>{request.job.customerEmail || "Not provided"}</dd>
+          </div>
           <div>
             <dt>Property address</dt>
             <dd>{request.job.address || "—"}</dd>
@@ -72,9 +78,18 @@ export default function IntakeReceipt({
             <dt>Project manager</dt>
             <dd>{request.job.projectManager || "—"}</dd>
           </div>
-          <div><dt>Original contract</dt><dd>{amounts.original}</dd></div>
-          <div><dt>Previous authorized changes</dt><dd>{amounts.previous}</dd></div>
-          <div className="receipt-total"><dt>Total contract price</dt><dd>{amounts.total}</dd></div>
+          <div>
+            <dt>Original contract</dt>
+            <dd>{amounts.original}</dd>
+          </div>
+          <div>
+            <dt>Previous authorized changes</dt>
+            <dd>{amounts.previous}</dd>
+          </div>
+          <div className="receipt-total">
+            <dt>Total contract price</dt>
+            <dd>{amounts.total}</dd>
+          </div>
         </dl>
       </section>
 
@@ -94,7 +109,9 @@ export default function IntakeReceipt({
             ))}
           </div>
         ) : (
-          <p className="receipt-caption">No written description was provided.</p>
+          <p className="receipt-caption">
+            No written description was provided.
+          </p>
         )}
       </section>
 

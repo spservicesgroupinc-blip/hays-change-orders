@@ -81,6 +81,26 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
 
 ## Notes
 
+### Rollout: editable requests and summary PDFs
+
+Deploy the updated `apps-script/Code.gs` **before** deploying the frontend.
+Update the existing web-app deployment to the new script version so the URL
+stays the same. The backend permits edits and new attachments while a request
+is queued, in review, or awaiting information; completed requests stay locked.
+Revision checks, retry identifiers, and attachment ownership checks still apply.
+
+Customer phone and email are optional fields in the version-2 request JSON;
+no new sheet columns or migration are needed. New submissions snapshot contact
+details from the selected directory job. Older requests remain readable and
+can have missing contact details filled in using **Edit request**. Removing an
+attachment unlinks it without deleting its Drive file.
+
+Summary PDFs are generated in the browser from the saved request and are not
+uploaded to Drive. Total contract price includes previous authorized changes.
+After deployment, verify an edit, a photo/PDF addition, individual attachment
+downloads, and **Download summary PDF**. Confirm a completed request cannot
+be edited. Keep the backend update in place if rolling back the frontend.
+
 - **Requests (V2)**: the **Requests** sheet holds searchable queue metadata
   (status, estimator, job, counts). The full request JSON is stored as
   immutable revision files in a request-owned Drive folder, so a save or claim

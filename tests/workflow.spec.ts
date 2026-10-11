@@ -95,7 +95,12 @@ function summarize(r: any) {
 async function installMockApi(
   page: Page,
   overrides: Record<string, any> = {},
-  failures: { save?: string; upload?: boolean; afterSave?: boolean; download?: boolean } = {},
+  failures: {
+    save?: string;
+    upload?: boolean;
+    afterSave?: boolean;
+    download?: boolean;
+  } = {},
 ) {
   const requests = new Map<string, any>();
   const seed = { ...structuredClone(baseRequest), ...overrides };
@@ -149,25 +154,55 @@ async function installMockApi(
       case "openRequest":
         return respond({ ok: true, request: current });
       case "saveRequest": {
-        if (mutations.has(body.mutationId)) return respond({ ok: true, request: mutations.get(body.mutationId) });
+        if (mutations.has(body.mutationId))
+          return respond({ ok: true, request: mutations.get(body.mutationId) });
         if (failures.save) {
           const code = failures.save;
           delete failures.save;
-          return respond({ ok: false, code, error: code === "CONFLICT" ? "A newer revision exists." : "Save failed. Retry." });
+          return respond({
+            ok: false,
+            code,
+            error:
+              code === "CONFLICT"
+                ? "A newer revision exists."
+                : "Save failed. Retry.",
+          });
         }
         const saved = commit(body.request);
         mutations.set(body.mutationId, saved);
-        if (failures.afterSave) { delete failures.afterSave; return respond({ ok: false, error: "Save response lost. Retry.", code: "SERVICE_ERROR" }); }
+        if (failures.afterSave) {
+          delete failures.afterSave;
+          return respond({
+            ok: false,
+            error: "Save response lost. Retry.",
+            code: "SERVICE_ERROR",
+          });
+        }
         return respond({ ok: true, request: saved });
       }
       case "uploadAttachment": {
         uploads.push(body);
-        if (failures.upload) { delete failures.upload; return respond({ ok: false, code: "UPLOAD_FAILED", error: "Upload failed. Retry." }); }
-        if (!uploaded.has(body.attachmentId)) uploaded.set(body.attachmentId, {
-          id: body.attachmentId, driveFileId: `drive-${body.attachmentId}`, name: body.file.name,
-          mimeType: body.file.mimeType, size: body.file.size, kind: body.file.kind,
+        if (failures.upload) {
+          delete failures.upload;
+          return respond({
+            ok: false,
+            code: "UPLOAD_FAILED",
+            error: "Upload failed. Retry.",
+          });
+        }
+        if (!uploaded.has(body.attachmentId))
+          uploaded.set(body.attachmentId, {
+            id: body.attachmentId,
+            driveFileId: `drive-${body.attachmentId}`,
+            name: body.file.name,
+            mimeType: body.file.mimeType,
+            size: body.file.size,
+            kind: body.file.kind,
+          });
+        return respond({
+          ok: true,
+          attachment: uploaded.get(body.attachmentId),
         });
-        return respond({ ok: true, attachment: uploaded.get(body.attachmentId) });
       }
       case "claimRequest":
         return respond({
@@ -190,14 +225,19 @@ async function installMockApi(
             ...current,
             status,
             informationQuestion:
-              target === "needs_information"
-                ? String(body.question ?? "")
-                : "",
+              target === "needs_information" ? String(body.question ?? "") : "",
           }),
         });
       }
       case "fetchAttachment": {
-        if (failures.download) { delete failures.download; return respond({ ok: false, code: "SERVICE_ERROR", error: "File download failed." }); }
+        if (failures.download) {
+          delete failures.download;
+          return respond({
+            ok: false,
+            code: "SERVICE_ERROR",
+            error: "File download failed.",
+          });
+        }
         const current = requests.get(url.searchParams.get("requestId") ?? "");
         const attachment = current?.attachments?.find(
           (item: any) => item.id === url.searchParams.get("attachmentId"),
@@ -227,7 +267,9 @@ test("an estimator reviews, starts work, and marks the request complete", async 
   await expect(
     page.getByRole("heading", { name: "In queue", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Wet insulation behind the kitchen wall")).toBeVisible();
+  await expect(
+    page.getByText("Wet insulation behind the kitchen wall"),
+  ).toBeVisible();
 
   await page.getByLabel("Estimator name").fill("Jamie Estimator");
   await page.getByRole("button", { name: "Start work" }).click();
@@ -247,7 +289,10 @@ test("an estimator reviews, starts work, and marks the request complete", async 
 test("an estimator can send a request back for information and the PM responds", async ({
   page,
 }) => {
-  await installMockApi(page, { status: "in_review", estimatorName: "Jamie Estimator" });
+  await installMockApi(page, {
+    status: "in_review",
+    estimatorName: "Jamie Estimator",
+  });
   await page.goto("/#/requests/r1");
 
   await page.getByRole("button", { name: "Request more information" }).click();
@@ -259,9 +304,13 @@ test("an estimator can send a request back for information and the PM responds",
   await expect(
     page.getByRole("heading", { name: "More information needed", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("What is the exact square footage?")).toBeVisible();
+  await expect(
+    page.getByText("What is the exact square footage?"),
+  ).toBeVisible();
 
-  await page.getByLabel("Response").fill("The affected area is 120 square feet.");
+  await page
+    .getByLabel("Response")
+    .fill("The affected area is 120 square feet.");
   await page.getByRole("button", { name: "Send response" }).click();
 
   // The response lands back with the estimator who asked for it.
@@ -277,36 +326,59 @@ test("the review page previews a photo and downloads an attachment", async ({
   await page.goto("/#/requests/r1");
 
   // Preview the photo in the shared modal.
-  await page.getByRole("button", { name: "Preview photo1.jpg", exact: true }).click();
-  await expect(
-    page.getByRole("dialog", { name: "photo1.jpg" }),
-  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Preview photo1.jpg", exact: true })
+    .click();
+  await expect(page.getByRole("dialog", { name: "photo1.jpg" })).toBeVisible();
   await page.getByRole("button", { name: "Close preview" }).click();
 
   // Download the PDF; the browser receives the file under its stored name.
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Download note.pdf", exact: true })
+    .click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("note.pdf");
 });
 
-test("edit details and separate notes, then download the saved summary PDF", async ({ page }) => {
+test("edit details and separate notes, then download the saved summary PDF", async ({
+  page,
+}) => {
   const api = await installMockApi(page, {
-    requestedChanges: [...structuredClone(baseRequest.requestedChanges), {
-      ...structuredClone(baseRequest.requestedChanges[0]), id: "c2", room: "Bathroom",
-      description: "Second change", measurements: "12 square feet", reason: "Hidden damage",
-    }],
+    requestedChanges: [
+      ...structuredClone(baseRequest.requestedChanges),
+      {
+        ...structuredClone(baseRequest.requestedChanges[0]),
+        id: "c2",
+        room: "Bathroom",
+        description: "Second change",
+        measurements: "12 square feet",
+        reason: "Hidden damage",
+      },
+    ],
   });
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Start work", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Download summary PDF" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Start work", exact: true }),
+  ).toBeDisabled();
   await page.getByLabel("Customer name", { exact: true }).fill("José Customer");
-  await page.getByLabel("Previous authorized changes", { exact: true }).fill("1250.19");
-  await page.getByLabel("Description 1", { exact: true }).fill("Corrected kitchen note\nKeep this paragraph.");
+  await page
+    .getByLabel("Previous authorized changes", { exact: true })
+    .fill("1250.19");
+  await page
+    .getByLabel("Description 1", { exact: true })
+    .fill("Corrected kitchen note\nKeep this paragraph.");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toBeVisible();
-  expect(api.requests.get("r1").requestedChanges[1].measurements).toBe("12 square feet");
+  await expect(
+    page.getByRole("button", { name: "Edit request", exact: true }),
+  ).toBeVisible();
+  expect(api.requests.get("r1").requestedChanges[1].measurements).toBe(
+    "12 square feet",
+  );
   expect(api.requests.get("r1").status).toBe("submitted");
   await expect(page.getByText("$168,296.00", { exact: true })).toBeVisible();
   const pending = page.waitForEvent("download");
@@ -314,87 +386,170 @@ test("edit details and separate notes, then download the saved summary PDF", asy
   const download = await pending;
   expect(download.suggestedFilename()).toBe("request-summary-F-26-0366-P.pdf");
   const bytes = await readFile((await download.path())!);
-  const pdf = await getDocument({ data: new Uint8Array(bytes), disableFontFace: true }).promise;
+  const pdf = await getDocument({
+    data: new Uint8Array(bytes),
+    disableFontFace: true,
+  }).promise;
   let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) text += (await (await pdf.getPage(i)).getTextContent()).items.map((item: any) => item.str).join(" ");
-  for (const expected of ["José Customer", "260-555-0144", "dana@example.com", "$168,296.00", "Corrected kitchen note", "Keep this paragraph", "Second change", "12 square feet", "photo1.jpg", "note.pdf"]) expect(text).toContain(expected);
+  for (let i = 1; i <= pdf.numPages; i++)
+    text += (await (await pdf.getPage(i)).getTextContent()).items
+      .map((item: any) => item.str)
+      .join(" ");
+  for (const expected of [
+    "José Customer",
+    "260-555-0144",
+    "dana@example.com",
+    "$168,296.00",
+    "Corrected kitchen note",
+    "Keep this paragraph",
+    "Second change",
+    "12 square feet",
+    "photo1.jpg",
+    "note.pdf",
+  ])
+    expect(text).toContain(expected);
   await pdf.destroy();
 });
 
-test("failed edits retain text, retry, and completed requests stay read only", async ({ page }) => {
-  await installMockApi(page, { status: "in_review", estimatorName: "Jamie Estimator" }, { save: "SERVICE_ERROR" });
+test("failed edits retain text, retry, and completed requests stay read only", async ({
+  page,
+}) => {
+  await installMockApi(
+    page,
+    { status: "in_review", estimatorName: "Jamie Estimator" },
+    { save: "SERVICE_ERROR" },
+  );
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
   await page.getByLabel("Description 1", { exact: true }).fill("Keep my edit");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Save failed");
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Keep my edit");
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Keep my edit",
+  );
   await page.getByRole("button", { name: "Retry save", exact: true }).click();
   await expect(page.getByText("Keep my edit", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Mark complete", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Mark complete", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Edit request", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Download summary PDF" }),
+  ).toBeEnabled();
 });
 
-test("unsaved edits warn on Cancel, app navigation, and browser back", async ({ page }) => {
+test("unsaved edits warn on Cancel, app navigation, and browser back", async ({
+  page,
+}) => {
   await installMockApi(page);
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
-  await page.getByLabel("Description 1", { exact: true }).fill("Unsaved correction");
+  await page
+    .getByLabel("Description 1", { exact: true })
+    .fill("Unsaved correction");
   page.on("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
-  await page.getByRole("button", { name: "Back to requests", exact: true }).click();
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Unsaved correction",
+  );
+  await page
+    .getByRole("button", { name: "Back to requests", exact: true })
+    .click();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Unsaved correction",
+  );
   await page.goBack();
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Unsaved correction",
+  );
   await expect(page).toHaveURL(/#\/requests\/r1$/);
   page.removeAllListeners("dialog");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByText("Wet insulation behind the kitchen wall", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Wet insulation behind the kitchen wall", { exact: true }),
+  ).toBeVisible();
 });
 
-test("conflicting edits retain the draft and offer reload without a blind retry", async ({ page }) => {
+test("conflicting edits retain the draft and offer reload without a blind retry", async ({
+  page,
+}) => {
   await installMockApi(page, {}, { save: "CONFLICT" });
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
-  await page.getByLabel("Description 1", { exact: true }).fill("Conflicting edit");
+  await page
+    .getByLabel("Description 1", { exact: true })
+    .fill("Conflicting edit");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Conflicting edit");
-  await expect(page.getByRole("button", { name: "Reload latest request" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
-  page.once("dialog", dialog => dialog.dismiss());
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Conflicting edit",
+  );
+  await expect(
+    page.getByRole("button", { name: "Reload latest request" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save changes", exact: true }),
+  ).toBeDisabled();
+  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Reload latest request" }).click();
-  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Conflicting edit");
-  page.once("dialog", dialog => dialog.accept());
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue(
+    "Conflicting edit",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Reload latest request" }).click();
-  await expect(page.getByText("Wet insulation behind the kitchen wall", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Wet insulation behind the kitchen wall", { exact: true }),
+  ).toBeVisible();
 });
 
-test("attachment edits retry on stable identities and preserve the information request", async ({ page }) => {
-  const api = await installMockApi(page, { status: "needs_information", estimatorName: "Jamie Estimator", informationQuestion: "Send a photo." }, { upload: true });
+test("attachment edits retry on stable identities and preserve the information request", async ({
+  page,
+}) => {
+  const api = await installMockApi(
+    page,
+    {
+      status: "needs_information",
+      estimatorName: "Jamie Estimator",
+      informationQuestion: "Send a photo.",
+    },
+    { upload: true },
+  );
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
-  await page.getByRole("button", { name: "Remove note.pdf", exact: true }).click();
-  await page.getByLabel("Add photos or PDFs", { exact: true }).setInputFiles([
-    resolve("tmp/fixtures/photo-800x600.png"), resolve("tmp/fixtures/no-text.pdf"),
-  ]);
+  await page
+    .getByRole("button", { name: "Remove note.pdf", exact: true })
+    .click();
+  await page
+    .getByLabel("Add photos or PDFs", { exact: true })
+    .setInputFiles([
+      resolve("tmp/fixtures/photo-800x600.png"),
+      resolve("tmp/fixtures/no-text.pdf"),
+    ]);
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Upload failed");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit request", exact: true }),
+  ).toBeVisible();
   const saved = api.requests.get("r1");
   expect(saved.status).toBe("needs_information");
   expect(saved.estimatorName).toBe("Jamie Estimator");
   expect(saved.informationQuestion).toBe("Send a photo.");
-  expect(saved.attachments.map((item: any) => item.name)).toEqual(["photo1.jpg", "photo-800x600.png", "no-text.pdf"]);
+  expect(saved.attachments.map((item: any) => item.name)).toEqual([
+    "photo1.jpg",
+    "photo-800x600.png",
+    "no-text.pdf",
+  ]);
   expect(api.uploads[0].attachmentId).toBe(api.uploads[1].attachmentId);
   expect(api.uploads[0].mutationId).toBe(api.uploads[1].mutationId);
   expect(api.uploaded.size).toBe(2);
 });
 
-test("a lost save response retries the committed revision instead of duplicating it", async ({ page }) => {
+test("a lost save response retries the committed revision instead of duplicating it", async ({
+  page,
+}) => {
   const api = await installMockApi(page, {}, { afterSave: true });
   await page.goto("/#/requests/r1");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
@@ -407,14 +562,29 @@ test("a lost save response retries the committed revision instead of duplicating
   expect(api.requests.get("r1").revision).toBe(2);
 });
 
-test("legacy requests show unavailable information and validate money before saving", async ({ page }) => {
-  const api = await installMockApi(page, { job: { ...baseRequest.job, customerPhone: undefined, customerEmail: undefined, originalContract: "", previousChanges: "" }, attachments: [] });
+test("legacy requests show unavailable information and validate money before saving", async ({
+  page,
+}) => {
+  const api = await installMockApi(page, {
+    job: {
+      ...baseRequest.job,
+      customerPhone: undefined,
+      customerEmail: undefined,
+      originalContract: "",
+      previousChanges: "",
+    },
+    attachments: [],
+  });
   await page.goto("/#/requests/r1");
   await expect(page.locator(".receipt-total")).toContainText("Not provided");
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
-  await page.getByLabel("Original contract amount", { exact: true }).fill("NaN");
+  await page
+    .getByLabel("Original contract amount", { exact: true })
+    .fill("NaN");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("at most two decimal places");
+  await expect(page.getByRole("alert")).toContainText(
+    "at most two decimal places",
+  );
   expect(api.requests.get("r1").revision).toBe(1);
   await page.getByLabel("Original contract amount", { exact: true }).fill("0");
   await page.getByLabel("Customer phone", { exact: true }).fill("555-0100");
@@ -423,38 +593,71 @@ test("legacy requests show unavailable information and validate money before sav
   expect(api.requests.get("r1").job.customerPhone).toBe("555-0100");
 });
 
-test("individual attachment downloads can be retried after a failure", async ({ page }) => {
+test("individual attachment downloads can be retried after a failure", async ({
+  page,
+}) => {
   await installMockApi(page, {}, { download: true });
   await page.goto("/#/requests/r1");
-  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Download note.pdf", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText("File download failed");
   const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Download note.pdf", exact: true })
+    .click();
   expect((await pending).suggestedFilename()).toBe("note.pdf");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("review and editor fit narrow and wide screens without browser errors", async ({ page }) => {
+test("review and editor fit narrow and wide screens without browser errors", async ({
+  page,
+}) => {
   const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  page.on("console", message => { if (message.type() === "error" || message.type() === "warning") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning")
+      errors.push(message.text());
+  });
   await installMockApi(page);
   await page.goto("/#/requests/r1");
-  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Download summary PDF" }),
+  ).toBeVisible();
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   }
-  await page.screenshot({ path: "tmp/request-summary/review-desktop.png", fullPage: true });
+  await page.screenshot({
+    path: "tmp/request-summary/review-desktop.png",
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 320, height: 900 });
-  await page.screenshot({ path: "tmp/request-summary/review-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "tmp/request-summary/review-mobile.png",
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Edit request", exact: true }).click();
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
   }
-  await page.screenshot({ path: "tmp/request-summary/editor-desktop.png", fullPage: true });
+  await page.screenshot({
+    path: "tmp/request-summary/editor-desktop.png",
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 320, height: 900 });
-  await page.screenshot({ path: "tmp/request-summary/editor-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "tmp/request-summary/editor-mobile.png",
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });
