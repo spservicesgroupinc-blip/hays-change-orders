@@ -286,6 +286,74 @@ function save(
   });
 }
 
+function submittedRequest(backend: ReturnType<typeof mockBackend>) {
+  const request = save(backend, intakeRequest()).request;
+  return backend.post({ action: "transitionRequest", id: request.id, expectedRevision: request.revision,
+    status: "submitted", question: "", mutationId: randomUUID() }).request as ChangeRequest;
+}
+
+test("submitted requests can be edited without changing review state or losing scope", () => {
+  const backend = mockBackend();
+  const request = submittedRequest(backend);
+  const submittedAt = request.submittedAt;
+  request.job.customer = "Updated Customer";
+  request.job.originalContract = "123.45";
+  request.job.previousChanges = "-0.45";
+  request.requestedChanges[0].description = "Corrected description";
+  const result = save(backend, request);
+  assert.equal(result.ok, true);
+  assert.equal(result.request.status, "submitted");
+  assert.equal(result.request.submittedAt, submittedAt);
+  assert.equal(result.request.requestedChanges[0].room, "Living room");
+  assert.equal(result.request.job.customer, "Updated Customer");
+  assert.equal(save(backend, request).code, "CONFLICT");
+});
+
+test("in-review edits and uploads preserve the assigned estimator", () => {
+  const backend = mockBackend();
+  let request = submittedRequest(backend);
+  request = backend.post({ action: "claimRequest", id: request.id, expectedRevision: request.revision,
+    estimatorName: "Estimator A", mutationId: randomUUID() }).request;
+  request.requestedChanges[0].description = "More detail";
+  const attachment = backend.post({ action: "uploadAttachment", requestId: request.id,
+    attachmentId: randomUUID(), mutationId: randomUUID(), file: { name: "details.pdf", kind: "document",
+      mimeType: "application/pdf", size: 9, data: Buffer.from("%PDF-1.4\n").toString("base64") } }).attachment;
+  request.attachments = [attachment];
+  const result = save(backend, request);
+  assert.equal(result.ok, true);
+  assert.equal(result.request.estimatorName, "Estimator A");
+  assert.equal(result.request.status, "in_review");
+  assert.equal(result.request.attachments.length, 1);
+  const removed = save(backend, { ...result.request, attachments: [] });
+  assert.equal(removed.ok, true);
+  assert.equal(removed.request.attachments.length, 0);
+});
+
+test("edits validate optional contact fields and nonblank money, retaining legacy compatibility", () => {
+  const backend = mockBackend();
+  const request = submittedRequest(backend);
+  request.job.originalContract = "invalid";
+  assert.equal(save(backend, request).code, "VALIDATION");
+  request.job.originalContract = "100.00";
+  request.job.previousChanges = "1.001";
+  assert.equal(save(backend, request).code, "VALIDATION");
+  request.job.previousChanges = "";
+  (request.job as any).customerPhone = 123;
+  assert.equal(save(backend, request).code, "VALIDATION");
+  delete (request.job as any).customerPhone;
+  assert.equal(save(backend, request).ok, true);
+});
+
+test("queued requests accept attachments and cannot bypass the status action", () => {
+  const backend = mockBackend();
+  const request = submittedRequest(backend);
+  const result = backend.post({ action: "uploadAttachment", requestId: request.id,
+    attachmentId: randomUUID(), mutationId: randomUUID(), file: { name: "details.pdf", kind: "document",
+      mimeType: "application/pdf", size: 9, data: Buffer.from("%PDF-1.4\n").toString("base64") } });
+  assert.equal(result.ok, true);
+  assert.equal(save(backend, { ...request, status: "completed" }).code, "STATE");
+});
+
 test("a request saves, lists and opens through the mocked Apps Script", () => {
   const backend = mockBackend();
   const request = intakeRequest();
@@ -359,7 +427,8 @@ test("claims have one winner and information requests return to the same estimat
     mutationId: randomUUID(),
   }).request;
   assert.equal(request.status, "submitted");
-  assert.equal(save(backend, request).code, "STATE");
+  request = save(backend, request).request;
+  assert.equal(request.status, "submitted");
 
   const expected = request.revision;
   request = backend.post({

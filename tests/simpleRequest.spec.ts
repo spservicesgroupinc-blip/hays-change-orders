@@ -351,6 +351,8 @@ test("a project manager sends a text-only quick request", async ({ page }) => {
     address: "1200 York St, Fort Wayne, IN 46802",
     projectManager: "Dana Whitfield",
     originalContract: "167045.81",
+    customerPhone: "260-555-0144",
+    customerEmail: "dana@example.com",
   });
   expect(api.saved[0].jobDirectoryId).toBe("job-1");
   expect(api.saved[0].requestedChanges).toHaveLength(1);

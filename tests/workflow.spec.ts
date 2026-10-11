@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.js";
 
 /**
  * The review page is where an estimator receives a quick request: they read
@@ -19,6 +21,8 @@ const baseRequest = {
   informationQuestion: "",
   job: {
     customer: "York Ridge Apartments",
+    customerPhone: "260-555-0144",
+    customerEmail: "dana@example.com",
     address: "1200 York St, Fort Wayne, IN 46802",
     jobNumber: "F-26-0366-P",
     projectManager: "Dana Whitfield",
@@ -90,6 +94,7 @@ function summarize(r: any) {
 async function installMockApi(
   page: Page,
   overrides: Record<string, any> = {},
+  failures: { save?: string; upload?: boolean } = {},
 ): Promise<{ requests: Map<string, any>; actions: string[] }> {
   const requests = new Map<string, any>();
   const seed = { ...structuredClone(baseRequest), ...overrides };
@@ -140,6 +145,11 @@ async function installMockApi(
       case "openRequest":
         return respond({ ok: true, request: current });
       case "saveRequest": {
+        if (failures.save) {
+          const code = failures.save;
+          delete failures.save;
+          return respond({ ok: false, code, error: code === "CONFLICT" ? "A newer revision exists." : "Save failed. Retry." });
+        }
         const saved = commit(body.request);
         return respond({ ok: true, request: saved });
       }
@@ -250,7 +260,7 @@ test("the review page previews a photo and downloads an attachment", async ({
   await page.goto("/#/requests/r1");
 
   // Preview the photo in the shared modal.
-  await page.getByRole("button", { name: "Preview" }).first().click();
+  await page.getByRole("button", { name: "Preview photo1.jpg", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "photo1.jpg" }),
   ).toBeVisible();
@@ -258,7 +268,83 @@ test("the review page previews a photo and downloads an attachment", async ({
 
   // Download the PDF; the browser receives the file under its stored name.
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download" }).last().click();
+  await page.getByRole("button", { name: "Download note.pdf", exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("note.pdf");
+});
+
+test("edit details and separate notes, then download the saved summary PDF", async ({ page }) => {
+  const api = await installMockApi(page, {
+    requestedChanges: [...structuredClone(baseRequest.requestedChanges), {
+      ...structuredClone(baseRequest.requestedChanges[0]), id: "c2", room: "Bathroom",
+      description: "Second change", measurements: "12 square feet", reason: "Hidden damage",
+    }],
+  });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start work", exact: true })).toBeDisabled();
+  await page.getByLabel("Customer name", { exact: true }).fill("José Customer");
+  await page.getByLabel("Previous authorized changes", { exact: true }).fill("1250.19");
+  await page.getByLabel("Description 1", { exact: true }).fill("Corrected kitchen note\nKeep this paragraph.");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toBeVisible();
+  expect(api.requests.get("r1").requestedChanges[1].measurements).toBe("12 square feet");
+  expect(api.requests.get("r1").status).toBe("submitted");
+  await expect(page.getByText("$168,296.00", { exact: true })).toBeVisible();
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download summary PDF" }).click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("request-summary-F-26-0366-P.pdf");
+  const bytes = await readFile((await download.path())!);
+  const pdf = await getDocument({ data: new Uint8Array(bytes), disableFontFace: true }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) text += (await (await pdf.getPage(i)).getTextContent()).items.map((item: any) => item.str).join(" ");
+  for (const expected of ["José Customer", "260-555-0144", "dana@example.com", "$168,296.00", "Corrected kitchen note", "Keep this paragraph", "Second change", "12 square feet", "photo1.jpg", "note.pdf"]) expect(text).toContain(expected);
+  await pdf.destroy();
+});
+
+test("failed edits retain text, retry, and completed requests stay read only", async ({ page }) => {
+  await installMockApi(page, { status: "in_review", estimatorName: "Jamie Estimator" }, { save: "SERVICE_ERROR" });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByLabel("Description 1", { exact: true }).fill("Keep my edit");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Save failed");
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Keep my edit");
+  await page.getByRole("button", { name: "Retry save", exact: true }).click();
+  await expect(page.getByText("Keep my edit", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Mark complete", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit request", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Download summary PDF" })).toBeEnabled();
+});
+
+test("unsaved edits warn on Cancel, app navigation, and browser back", async ({ page }) => {
+  await installMockApi(page);
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByLabel("Description 1", { exact: true }).fill("Unsaved correction");
+  page.on("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
+  await page.getByRole("button", { name: "Back to requests", exact: true }).click();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
+  await page.goBack();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Unsaved correction");
+  await expect(page).toHaveURL(/#\/requests\/r1$/);
+  page.removeAllListeners("dialog");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByText("Wet insulation behind the kitchen wall", { exact: true })).toBeVisible();
+});
+
+test("conflicting edits retain the draft and offer reload without a blind retry", async ({ page }) => {
+  await installMockApi(page, {}, { save: "CONFLICT" });
+  await page.goto("/#/requests/r1");
+  await page.getByRole("button", { name: "Edit request", exact: true }).click();
+  await page.getByLabel("Description 1", { exact: true }).fill("Conflicting edit");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByLabel("Description 1", { exact: true })).toHaveValue("Conflicting edit");
+  await expect(page.getByRole("button", { name: "Reload latest request" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
 });

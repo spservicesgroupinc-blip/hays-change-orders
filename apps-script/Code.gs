@@ -283,6 +283,13 @@ function shapeCheck_(request) {
   ["estimatorName", "informationQuestion"].forEach(function(key) { if (typeof request[key] !== "string") problem_("VALIDATION", key + " must be text."); });
   const jobKeys = ["customer", "address", "jobNumber", "projectManager", "branchName", "branchAddress", "branchPhone", "branchContact", "carrier", "claim", "orderNumber", "date", "originalContract", "previousChanges", "addedDays"];
   jobKeys.forEach(function(key) { if (typeof request.job[key] !== "string") problem_("VALIDATION", "Job " + key + " must be text."); });
+  ["customerPhone", "customerEmail"].forEach(function(key) {
+    if (request.job[key] !== undefined && typeof request.job[key] !== "string") problem_("VALIDATION", "Job " + key + " must be text.");
+  });
+  ["originalContract", "previousChanges"].forEach(function(key) {
+    const value = request.job[key].trim();
+    if (value && !/^-?\d+(?:\.\d{1,2})?$/.test(value)) problem_("VALIDATION", "Enter " + key + " as a dollar amount with at most two decimal places.");
+  });
   const unique = function(rows) { const seen = {}; rows.forEach(function(row) { if (!row || !row.id || typeof row.id !== "string" || seen[row.id]) problem_("VALIDATION", "Item identifiers must be unique."); seen[row.id] = true; }); };
   unique(request.requestedChanges); unique(request.attachments);
   request.requestedChanges.forEach(function(change) {
@@ -309,7 +316,7 @@ function saveRequest_(body) {
       request.submittedAt = null; request.informationQuestion = "";
     } else {
       const previous = snapshot.request;
-      if (previous.status === "submitted" || previous.status === "in_review" || previous.status === "completed") problem_("STATE", "Reopen or claim this request before editing it.");
+      if (["draft", "submitted", "in_review", "needs_information"].indexOf(previous.status) < 0) problem_("STATE", "Completed requests cannot be edited.");
       if (request.status !== previous.status || request.estimatorName !== previous.estimatorName) problem_("STATE", "Use the claim or status action to change review state.");
       request.submittedAt = previous.submittedAt; request.informationQuestion = previous.informationQuestion;
       request.attachments = request.attachments.map(function(attachment) { return attachmentFile_(row, attachment).attachment; });
@@ -369,7 +376,7 @@ function uploadAttachment_(body) {
       return json_({ ok: true, attachment: metadata.attachment });
     }
     const request = readSnapshot_(row).request;
-    if (request.status === "submitted" || request.status === "ready" || request.status === "completed") problem_("STATE", "Reopen the request before uploading attachments.");
+    if (["draft", "submitted", "in_review", "needs_information"].indexOf(request.status) < 0) problem_("STATE", "Completed requests cannot receive attachments.");
     const name = String(info.name || "attachment").split(/[\\/]/).pop().slice(0, 200);
     const file = folder.createFile(Utilities.newBlob(bytes, info.mimeType, filename));
     const attachment = { id: String(body.attachmentId), kind: info.kind, name: name, mimeType: info.mimeType, size: bytes.length, driveFileId: file.getId() };

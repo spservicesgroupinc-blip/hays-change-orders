@@ -116,6 +116,8 @@ function buildRequest(
     job: {
       ...request.job,
       customer: details.customer,
+      customerPhone: details.job?.customerPhone ?? "",
+      customerEmail: details.job?.customerEmail ?? "",
       address: details.job?.address ?? "",
       jobNumber: details.job?.jobNumber ?? "",
       projectManager: details.job?.projectManager ?? "",

@@ -89,7 +89,7 @@ export interface JobEntry {
   on purpose so a Jobs sheet deployed before the column existed keeps every
   existing column aligned.
 - `GET  ?action=listJobs` → `{ ok, jobs: JobEntry[] }` (active first).
-- `POST {action:"importJobs", jobs: JobEntry[], mutationId}` → **full replace**
+- `POST {action:"importJobs", jobs: JobEntry[]}` → **full replace**
   of the Jobs sheet (last-write-wins; the directory is reference data, not a
   revisioned document — acceptable, unlike requests). Each row is written as
   `[…, updatedAt, String(job.contractAmount || "")]`, and `jobRow_` reads the

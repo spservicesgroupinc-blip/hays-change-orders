@@ -88,8 +88,12 @@ Then restart `npm run dev` (Vite reads `.env.local` at startup).
   request folder and only linked once a save references them.
 - **Upload size**: the client caps uploads at 15 MB. Apps Script web-app POST
   bodies are limited, and files travel as base64 (~1.33× their size).
-- **Job directory**: the **Jobs** sheet is maintained directly in Google
-  Sheets (`GET ?action=listJobs`). Project managers pick a job in the quick
+- **Job directory**: the **Jobs** page (`#/jobs`) loads the directory from
+  the Dash **JobSummaryReport** export — choose the CSV or paste it, preview
+  the parsed rows and warnings, then **Import** (`POST {action:"importJobs"}`).
+  An import **replaces the whole directory**, so upload the latest complete
+  report. The sheet can still be hand-edited in Google Sheets for one-off
+  fixes (`GET ?action=listJobs`). Project managers pick a job in the quick
   request form to autofill the job number, customer, property address, and
   responsible project manager, plus the customer's **original contract
   amount** when the directory carries one.

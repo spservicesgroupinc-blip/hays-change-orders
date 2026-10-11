@@ -19,6 +19,8 @@ export function createRequest(): ChangeRequest {
     informationQuestion: "",
     job: {
       customer: "",
+      customerPhone: "",
+      customerEmail: "",
       address: "",
       jobNumber: "",
       projectManager: "",

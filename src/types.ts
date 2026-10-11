@@ -56,6 +56,8 @@ export interface RequestSummary {
 }
 export interface JobDetails {
   customer: string;
+  customerPhone?: string;
+  customerEmail?: string;
   address: string;
   jobNumber: string;
   projectManager: string;
@@ -72,8 +74,9 @@ export interface JobDetails {
   previousChanges: string;
   addedDays: string;
 }
-// A row in the job directory, read from the Jobs sheet (managed directly in
-// Google Sheets). The PM picks one to autofill the request's job details.
+// A row in the job directory, imported from the Dash JobSummaryReport on the
+// Jobs page and read from the Jobs sheet. The PM picks one to autofill the
+// request's job details.
 export interface JobEntry {
   id: string;
   jobNumber: string;
