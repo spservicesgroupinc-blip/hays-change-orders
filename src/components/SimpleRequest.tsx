@@ -13,6 +13,10 @@ import {
   transitionRequest,
   uploadAttachment,
 } from "../services/storage";
+import {
+  looksLikePhotoFile,
+  preparePhotoForUpload,
+} from "../services/photoUpload";
 import PhotoAnnotator from "./PhotoAnnotator";
 import "./SimpleRequest.css";
 
@@ -276,7 +280,10 @@ export default function SimpleRequest(
   );
 
   const addPhotos = (files: File[]) => {
-    const images = files.filter((file) => file.type.startsWith("image/"));
+    // Not every OS reports a photo's MIME type; a HEIC off Windows often has
+    // an empty one, and silently dropping it looked like the picker ignoring
+    // the tap. Extension-matching files are converted at upload if needed.
+    const images = files.filter(looksLikePhotoFile);
     if (!images.length) return;
     setContentError("");
     setPhotos((current) => [
@@ -426,17 +433,24 @@ export default function SimpleRequest(
       for (const photo of photos) {
         done += 1;
         setProgress(`Uploading photo ${done} of ${total}…`);
-        const blob = photo.blob;
+        // The endpoint only accepts JPEG/PNG/WebP under 15 MB, but phones
+        // hand over HEIC, empty-typed, and oversized photos; normalize to a
+        // bounded JPEG so every pick is uploadable. A retry re-converts the
+        // same blob into the same bytes under the same upload identity.
+        const prepared = await preparePhotoForUpload(
+          photo.blob,
+          photo.file.name,
+        );
         const identity = uploadIdentityFor(photo.id);
         uploaded.push(
           await uploadAttachment(
             saved.id,
             {
-              name: photo.file.name,
-              mimeType: blob.type || photo.file.type || "image/jpeg",
-              size: blob.size,
+              name: prepared.name,
+              mimeType: prepared.mimeType,
+              size: prepared.size,
               kind: "photo",
-              data: await blobToBase64(blob),
+              data: await blobToBase64(prepared.blob),
             },
             identity.attachmentId,
             identity.mutationId,
@@ -635,7 +649,11 @@ export default function SimpleRequest(
           <input
             ref={photoInput}
             type="file"
-            accept="image/*"
+            // The explicit list (same as the full request form) makes iOS
+            // transcode HEIC library picks to JPEG; `image/*` hands the raw
+            // HEIC over, which the Apps Script endpoint rejects. Photos that
+            // still arrive in another format are converted before upload.
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             capture="environment"
             multiple
             hidden

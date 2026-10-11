@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -44,6 +45,7 @@ const jobs = [
 interface UploadCall {
   kind: string;
   name: string;
+  mimeType: string;
   bytes: number;
   attachmentId: string;
   mutationId: string;
@@ -155,6 +157,7 @@ async function installMockApi(
         const call: UploadCall = {
           kind: String(file.kind ?? ""),
           name: String(file.name ?? ""),
+          mimeType: String(file.mimeType ?? ""),
           bytes: String(file.data ?? "").length,
           attachmentId: String(body.attachmentId ?? ""),
           mutationId: String(body.mutationId ?? ""),
@@ -374,7 +377,7 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
   await page.goto("/#/simple");
   await pickCustomer(page, "York Ridge Apartments");
   await page
-    .locator('input[type="file"][accept="image/*"]')
+    .locator('input[type="file"][accept^="image/jpeg"]')
     .setInputFiles(resolve("tmp/fixtures/photo-800x600.png"));
   await expect(page.getByRole("img", { name: "Photo 1" })).toBeVisible();
 
@@ -442,6 +445,40 @@ test("a photo is marked up before it is sent, with an optional PDF", async ({
   });
 });
 
+test("a photo the endpoint cannot accept (HEIC pick) is converted before upload", async ({
+  page,
+}) => {
+  const api = await installMockApi(page);
+  await page.goto("/#/simple");
+  await pickCustomer(page, "York Ridge Apartments");
+  // A library pick that still arrives as HEIC: the form is handed image/heic,
+  // which the Apps Script endpoint rejects outright ("Choose a supported file
+  // smaller than 15 MB"). It must be converted to a JPEG before uploading.
+  await page
+    .locator('input[type="file"][accept^="image/jpeg"]')
+    .setInputFiles({
+      name: "IMG_1234.HEIC",
+      mimeType: "image/heic",
+      buffer: readFileSync(resolve("tmp/fixtures/photo-800x600.png")),
+    });
+  await expect(page.getByRole("img", { name: "Photo 1" })).toBeVisible();
+  await page
+    .getByLabel("What changed?", { exact: true })
+    .fill("Water stain behind the cabinet");
+  await page.getByRole("button", { name: "Send to estimating" }).click();
+  await expect(page.getByText(/Sent to estimating/)).toBeVisible();
+
+  // Uploaded as a JPEG under a .jpg name, with real encoded bytes — not the
+  // rejected HEIC type.
+  expect(api.uploads).toHaveLength(1);
+  expect(api.uploads[0].kind).toBe("photo");
+  expect(api.uploads[0].mimeType).toBe("image/jpeg");
+  expect(api.uploads[0].name).toBe("IMG_1234.jpg");
+  expect(api.uploads[0].bytes).toBeGreaterThan(1000);
+  expect(api.saved[1].attachments[0].mimeType).toBe("image/jpeg");
+  expect(api.transitions).toHaveLength(1);
+});
+
 test("the customer field falls back to a typed name when the directory is empty", async ({
   page,
 }) => {
@@ -468,7 +505,7 @@ test("a failed upload is retried on the same request, never a duplicate", async 
     .getByLabel("What changed?", { exact: true })
     .fill("Replace the damaged siding");
   await page
-    .locator('input[type="file"][accept="image/*"]')
+    .locator('input[type="file"][accept^="image/jpeg"]')
     .setInputFiles(resolve("tmp/fixtures/photo-800x600.png"));
   await expect(page.getByRole("img", { name: "Photo 1" })).toBeVisible();
 

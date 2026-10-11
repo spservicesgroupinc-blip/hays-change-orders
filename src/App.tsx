@@ -49,6 +49,7 @@ import {
   transitionRequest,
   uploadAttachment,
 } from "./services/storage";
+import { preparePhotoForUpload } from "./services/photoUpload";
 import {
   RequestEditor,
   listRecoveries,
@@ -715,12 +716,30 @@ export default function App() {
     try {
       await flush();
       const { file, kind, quoteId } = entry;
-      const mimeType =
+      // The upload endpoint accepts only JPEG/PNG/WebP photos under 15 MB, but
+      // phone cameras hand over HEIC, empty-typed, and oversized photos; the
+      // helper converts what the endpoint would reject. PDFs (estimate,
+      // quote, document) pass through untouched.
+      let uploadBlob: Blob = file;
+      let uploadName = file.name;
+      let mimeType =
         file.type || (kind === "photo" ? "image/jpeg" : "application/pdf");
-      const base64 = await blobToBase64(file);
+      if (kind === "photo") {
+        const prepared = await preparePhotoForUpload(file, file.name);
+        uploadBlob = prepared.blob;
+        uploadName = prepared.name;
+        mimeType = prepared.mimeType;
+      }
+      const base64 = await blobToBase64(uploadBlob);
       const attachment = await uploadAttachment(
         editor.current.id,
-        { name: file.name, mimeType, size: file.size, kind, data: base64 },
+        {
+          name: uploadName,
+          mimeType,
+          size: uploadBlob.size,
+          kind,
+          data: base64,
+        },
         id,
         newId(),
       );
