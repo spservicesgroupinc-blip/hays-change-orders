@@ -24,7 +24,7 @@ export function pricingInputError(
     request.lineNumbers?.trim() &&
     !/^[+-][1-9]\d*(?:[\s,]+[+-][1-9]\d*)*$/.test(request.lineNumbers.trim())
   )
-    return "Enter line numbers with + or - before each number, separated by commas or new lines (for example, +12, -34).";
+    return "Enter a line number greater than zero in each row and choose Add or Remove.";
   for (const [label, value] of [
     ["Known change amount", request.knownChangeAmount],
     ["Final change amount", request.finalChangeOrder?.amount],

@@ -405,10 +405,61 @@ test("checkbox answers are copied for Dash before submission and saved with the 
   await page
     .getByLabel("What changed?", { exact: true })
     .fill("Credit for unused flooring.\nKeep this text.");
+  await page.getByLabel("Estimate line number 1", { exact: true }).fill("12");
   await page
-    .getByLabel("Estimate line numbers", { exact: true })
-    .fill("+12, -34\n+56");
-  await page.getByLabel("Known change amount", { exact: true }).fill("-250.19");
+    .getByRole("button", { name: "Add another line", exact: true })
+    .click();
+  await page.getByLabel("Estimate line number 2", { exact: true }).fill("34");
+  await page
+    .getByRole("group", { name: "Action for estimate line 2", exact: true })
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Add another line", exact: true })
+    .click();
+  await page.getByLabel("Estimate line number 3", { exact: true }).fill("56");
+  const moneyDirection = page.getByRole("group", {
+    name: "Known change amount direction",
+    exact: true,
+  });
+  await moneyDirection
+    .getByRole("button", { name: "Credit", exact: true })
+    .click();
+  await expect(
+    moneyDirection.getByRole("button", { name: "Credit", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Known change amount", { exact: true }).fill("250.19");
+  await moneyDirection
+    .getByRole("button", { name: "Increase", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Known change amount", { exact: true }),
+  ).toHaveValue("250.19");
+  await moneyDirection
+    .getByRole("button", { name: "Credit", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Add another line", exact: true })
+    .click();
+  await page.getByLabel("Estimate line number 4", { exact: true }).fill("99");
+  await page
+    .getByRole("button", { name: "Delete estimate line 4", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Estimate line number 4", { exact: true }),
+  ).toHaveCount(0);
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 1400 });
+    await page.keyboard.press("Control+Home");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .locator(".request-pricing")
+      .screenshot({ path: `tmp/request-summary/sign-controls-${width}.png` });
+  }
   await page
     .getByRole("button", { name: "Copy Dash note", exact: true })
     .click();
@@ -421,7 +472,7 @@ test("checkbox answers are copied for Dash before submission and saved with the 
     "York Ridge Apartments",
     "F-26-0366-P",
     "Credit for unused flooring.\nKeep this text.",
-    "Estimate line numbers: +12, -34\n+56",
+    "Estimate line numbers: +12, -34, +56",
     "Known change amount: -$250.19",
   ])
     expect(copied[0]).toContain(expected);
@@ -431,7 +482,7 @@ test("checkbox answers are copied for Dash before submission and saved with the 
   await expect(page.getByText(/Sent to estimating/)).toBeVisible();
   expect(api.saved[0].requestType).toBe("insurance_supplement");
   expect(api.saved[0].customerCredits).toBe(true);
-  expect(api.saved[0].lineNumbers).toBe("+12, -34\n+56");
+  expect(api.saved[0].lineNumbers).toBe("+12, -34, +56");
   expect(api.saved[0].knownChangeAmount).toBe("-250.19");
 });
 

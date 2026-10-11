@@ -140,8 +140,11 @@ export default function RequestReview({
             </p>
           ) : null}
           <p>
-            {documentError ||
-              "The saved customer document is ready to preview or download for approval."}
+            {documentError
+              ? request.status === "completed"
+                ? "A complete customer document was not prepared before this request was completed."
+                : documentError
+              : "The saved customer document is ready to preview or download for approval."}
           </p>
           <div className="button-row">
             {request.status !== "completed" ? (

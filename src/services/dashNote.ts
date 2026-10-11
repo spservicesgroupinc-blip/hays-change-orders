@@ -50,6 +50,17 @@ export function formatDashNote(
   field("Total contract price", amounts.total);
   field("Estimate line numbers", request.lineNumbers);
   field("Known change amount", signedAmountLabel(request.knownChangeAmount));
+  for (const [label, value] of [
+    ["Change-order date", job.date],
+    ["Added days", job.addedDays],
+    ["Branch name", job.branchName],
+    ["Branch address", job.branchAddress],
+    ["Branch phone", job.branchPhone],
+    ["Contractor representative", job.branchContact],
+  ])
+    if (value?.trim()) field(label!, value);
+  if (typeof job.insuranceRelated === "boolean")
+    field("Insurance-related work", job.insuranceRelated ? "Yes" : "No");
   lines.push("", "SUBMITTED TEXT");
   if (!request.requestedChanges.length)
     lines.push("No written description provided.");
@@ -79,8 +90,6 @@ export function formatDashNote(
       signedAmountLabel(request.finalChangeOrder.amount),
     );
     field("New contract total", finalContractTotal(request));
-    field("Change-order date", job.date);
-    field("Added days", job.addedDays);
   }
   lines.push("", "ATTACHMENTS");
   lines.push(

@@ -273,9 +273,7 @@
   overflow-wrap: anywhere;
 }
 .sr-submit {
-  position: sticky;
-  z-index: 3;
-  bottom: 10px;
+  position: relative;
   margin-top: 18px;
   padding: 14px;
   background: #fff;

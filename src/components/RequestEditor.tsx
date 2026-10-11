@@ -25,6 +25,7 @@ import {
 } from "../services/changeOrder";
 import "./RequestEditor.css";
 import RequestQuestions from "./RequestQuestions";
+import { SignedAmountInput } from "./SignedInputs";
 
 type PendingFile = {
   id: string;
@@ -407,29 +408,20 @@ export default function RequestEditor({
           >
             Use submitted descriptions
           </button>
-          <label className="field">
-            <span>Final change amount</span>
-            <input
-              aria-label="Final change amount"
-              type="text"
-              placeholder="+1250.19 or -250.00"
-              value={draft.finalChangeOrder?.amount ?? ""}
-              onChange={(event) =>
-                setDraft((previous) => ({
-                  ...previous,
-                  finalChangeOrder: {
-                    scope: previous.finalChangeOrder?.scope ?? "",
-                    amount: event.target.value,
-                  },
-                }))
-              }
-            />
-            <small>
-              + increases the contract; - gives a credit. Enter 0.00 for no
-              price change. Submitter’s known amount:{" "}
-              {signedAmountLabel(draft.knownChangeAmount)}.
-            </small>
-          </label>
+          <SignedAmountInput
+            label="Final change amount"
+            value={draft.finalChangeOrder?.amount ?? ""}
+            onChange={(value) =>
+              setDraft((previous) => ({
+                ...previous,
+                finalChangeOrder: {
+                  scope: previous.finalChangeOrder?.scope ?? "",
+                  amount: value,
+                },
+              }))
+            }
+            hint={`Enter 0.00 for no price change. Submitter’s known amount: ${signedAmountLabel(draft.knownChangeAmount)}.`}
+          />
           <p>
             <strong>New contract total: {finalContractTotal(draft)}</strong>
           </p>

@@ -1,4 +1,5 @@
 import type { ChangeRequest } from "../types";
+import { LineChangesInput, SignedAmountInput } from "./SignedInputs";
 import "./RequestQuestions.css";
 
 type Answers = Pick<
@@ -69,38 +70,20 @@ export default function RequestQuestions({
           Leave unchecked if this does not include customer credits.
         </small>
       </div>
-      <label className="field">
-        <span>Estimate line numbers (optional)</span>
-        <textarea
-          aria-label="Estimate line numbers"
-          rows={2}
+      <div className="request-pricing">
+        <LineChangesInput
           value={lineNumbers}
-          placeholder={"+12, -34\n+56"}
-          onChange={(event) =>
-            onChange({ ...answers, lineNumbers: event.target.value })
-          }
+          onChange={(value) => onChange({ ...answers, lineNumbers: value })}
         />
-        <small>
-          Use + for lines to add and - for lines to remove. Separate each line
-          number with a comma or a new line.
-        </small>
-      </label>
-      <label className="field">
-        <span>Known change amount (optional)</span>
-        <input
-          aria-label="Known change amount"
-          type="text"
+        <SignedAmountInput
+          label="Known change amount"
+          optional
           value={knownChangeAmount}
-          placeholder="+1250.19 or -250.00"
-          onChange={(event) =>
-            onChange({ ...answers, knownChangeAmount: event.target.value })
+          onChange={(value) =>
+            onChange({ ...answers, knownChangeAmount: value })
           }
         />
-        <small>
-          Use + for an increase or - for a credit. Leave blank if the amount is
-          unknown.
-        </small>
-      </label>
+      </div>
     </fieldset>
   );
 }

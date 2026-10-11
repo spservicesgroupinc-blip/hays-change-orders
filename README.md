@@ -22,11 +22,11 @@ have the same button on the review screen; save corrections before copying.
 If clipboard access is blocked, the app provides selectable note text.
 Older requests show unanswered questions as **Not provided** until edited.
 
-Enter optional **Estimate line numbers** with a sign before each number,
-such as `+12, -34` (commas or new lines separate references). `+` adds work;
-`-` removes work. Enter **Known change amount** only when known, such as
-`+1250.19` for an increase or `-250.00` for a credit. These answers also appear
-in Dash notes and the summary PDF.
+Use **Add / Remove** buttons beside each estimate line number, and **Add
+another line** for additional references. Choose **Increase / Credit** beside
+**Known change amount**, then enter the dollar amount without typing a sign.
+Leave it blank when unknown. The estimator's final amount uses the same buttons.
+Signed answers appear in Dash notes and PDFs.
 
 1. **Project managers** describe what changed. Create a request, enter the job and property details, add one card per room/work area (add, revise, or remove work; what and why), attach photos, estimate PDFs, or subcontractor quotes, and submit to estimating. Drafts autosave as you type.
 2. **Estimators** open requests from the shared queue, review the submitted text, and preview or download each attached photo or PDF. Use **Download summary PDF** for the internal job summary. Select **Prepare customer document**, confirm customer/contract details, enter the final customer scope and signed change amount, and check the change-order number/date, added days, branch/contact information and insurance details. **Use submitted descriptions** copies scope for review; the submitter's known amount is never automatically approved. Save, then **Preview customer PDF** or **Download customer PDF**. The Hays + Sons letterhead document includes the agreed scope, original/prior/change amounts, new contract total and owner/contractor signature lines. It excludes internal notes and attachment filenames. Mark the request complete when finished; the saved customer PDF remains downloadable.

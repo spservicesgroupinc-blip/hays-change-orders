@@ -360,7 +360,14 @@ test("estimator saves final scope and credit, previews and downloads the custome
   await page
     .getByLabel("Final customer scope", { exact: true })
     .fill("Agreed replacement of kitchen insulation.\nCredit for unused trim.");
-  await page.getByLabel("Final change amount", { exact: true }).fill("-250.10");
+  const finalDirection = page.getByRole("group", {
+    name: "Final change amount direction",
+    exact: true,
+  });
+  await finalDirection
+    .getByRole("button", { name: "Credit", exact: true })
+    .click();
+  await page.getByLabel("Final change amount", { exact: true }).fill("250.10");
   await page
     .getByLabel("Previous authorized changes", { exact: true })
     .fill("25.09");
