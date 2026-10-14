@@ -385,18 +385,48 @@ function uploadAttachment_(body) {
       return json_({ ok: true, attachment: metadata.attachment });
     }
     const request = readSnapshot_(row).request;
-    if (["submitted", "in_review", "needs_information"].indexOf(request.status) < 0) problem_("STATE", "Completed requests cannot receive attachments.");
-    const name = String(info.name || "attachment").split(/[\\/]/).pop().slice(0, 200);
-    const file = folder.createFile(Utilities.newBlob(bytes, info.mimeType, filename));
-    const attachment = { id: String(body.attachmentId), kind: info.kind, name: name, mimeType: info.mimeType, size: bytes.length, driveFileId: file.getId() };
-    file.setDescription(JSON.stringify({ requestId: body.requestId, mutationId: body.mutationId, attachment: attachment }));
+    if (["submitted", "in_review", "needs_information"].indexOf(request.status) < 0) problem_("STATE", "Completed requests cannot be edited.");
+    const blob = Utilities.newBlob(bytes, info.mimeType, filename);
+    const file = folder.createFile(blob);
+    const attachment = {
+      id: body.attachmentId,
+      name: String(info.name || filename),
+      mimeType: info.mimeType,
+      size: info.size,
+      kind: info.kind,
+      driveFileId: file.getId(),
+      createdAt: new Date().toISOString()
+    };
+    const metadata = {
+      mutationId: body.mutationId,
+      requestId: String(row.values[RC.ID]),
+      attachment: attachment
+    };
+    file.setDescription(JSON.stringify(metadata));
     return json_({ ok: true, attachment: attachment });
   });
 }
+
 function fetchAttachment_(requestId, attachmentId) {
-  const row = requestRow_(requestId); if (!row) problem_("NOT_FOUND", "Request not found.");
-  const request = readSnapshot_(row).request; const attachment = request.attachments.filter(function(item) { return item.id === attachmentId; })[0];
-  if (!attachment) problem_("NOT_FOUND", "Attachment is not linked to this request.");
-  const owned = attachmentFile_(row, attachment);
-  return json_({ ok: true, name: owned.attachment.name, mimeType: owned.attachment.mimeType, data: Utilities.base64Encode(owned.file.getBlob().getBytes()) });
+  if (!requestId || !attachmentId) problem_("VALIDATION", "Request and attachment identifiers are required.");
+  const row = requestRow_(requestId);
+  if (!row) problem_("NOT_FOUND", "Request not found.");
+  const folder = DriveApp.getFolderById(String(row.values[RC.FOLDER]));
+  const filename = "attachment-" + attachmentId;
+  const files = folder.getFilesByName(filename);
+  if (!files.hasNext()) problem_("NOT_FOUND", "Attachment not found.");
+  const file = files.next();
+  let metadata = {};
+  try {
+    metadata = JSON.parse(file.getDescription());
+  } catch (error) {
+    metadata = {};
+  }
+  const att = metadata.attachment || {};
+  return json_({
+    ok: true,
+    name: att.name || file.getName(),
+    mimeType: att.mimeType || file.getBlob().getContentType(),
+    data: Utilities.base64Encode(file.getBlob().getBytes())
+  });
 }
